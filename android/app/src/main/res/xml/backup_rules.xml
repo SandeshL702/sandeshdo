@@ -4,5 +4,4 @@
     <include domain="database" path="." />
     <include domain="sharedpref" path="." />
     <include domain="root" path="app_webview/" />
-    <exclude domain="cache" path="." />
 </full-backup-content>

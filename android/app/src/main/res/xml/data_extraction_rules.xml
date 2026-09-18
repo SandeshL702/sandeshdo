@@ -5,7 +5,6 @@
         <include domain="database" path="." />
         <include domain="sharedpref" path="." />
         <include domain="root" path="app_webview/" />
-        <exclude domain="cache" path="." />
     </cloud-backup>
     <device-transfer>
         <include domain="file" path="." />

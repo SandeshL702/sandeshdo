@@ -50,7 +50,7 @@ English or Hinglish. Default English.
 
 ## Install (Android)
 
-Package `com.sandesh.sandeshdo`
+Package `com.sandesh.sandeshdo` · **2.1.0**
 
 1. Download the APK from [Releases](https://github.com/SandeshL702/sandeshdo/releases)
 2. Allow **notifications** and **exact alarms**
