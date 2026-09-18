@@ -13,7 +13,9 @@ android/assets/
 android/src/
 *.keystore
 *.jks
+*.apk
 *.apk.idsig
+!android/build-apk.sh
 artifacts/imagine_images/
 artifacts/browsed_files/
 screenshots/

@@ -1,4 +1,9 @@
 <p align="center">
+  <a href="https://github.com/SandeshL702/sandeshdo/releases/latest/download/SandeshDo.apk"><strong>Download SandeshDo.apk</strong></a>
+  · direct install, not a zip
+</p>
+
+<p align="center">
   <img src="docs/banner.jpg" alt="SandeshDo — Remember it. Do it. Finish it." width="920" />
 </p>
 
@@ -50,13 +55,15 @@ English or Hinglish. Default English.
 
 ## Install (Android)
 
-Package `com.sandesh.sandeshdo` · **2.1.0**
+**[Download SandeshDo.apk](https://github.com/SandeshL702/sandeshdo/releases/latest/download/SandeshDo.apk)** — the file on Releases. Not the green “Code → Download ZIP”.
 
-1. Download the APK from [Releases](https://github.com/SandeshL702/sandeshdo/releases)
+Package `com.sandesh.sandeshdo` · **2.1.1**
+
+1. Open the `.apk` (if the phone says zip, rename to `.apk` — Android packages are zip under the hood)
 2. Allow **notifications** and **exact alarms**
 3. Xiaomi / Vivo / Oppo — turn **Autostart** on
 
-Install the new APK over the same package. Your data stays.
+Install over the old SandeshDo. Your data stays.
 
 ## Run from source
 
