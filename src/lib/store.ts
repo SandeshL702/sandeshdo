@@ -47,6 +47,7 @@ import {
 } from "./game";
 import { playCompleteSfx, playDamageSfx, playHealSfx, playLevelUpSfx } from "./sfx";
 import { persistBackup, serializeBackup, tryNativeRestore } from "./backup";
+import { decryptVaultItems, encryptVaultItems } from "./crypto";
 import { DEFAULT_BUDGETS, DEFAULT_MONEY_CATEGORIES, ensureIncomeCats } from "./money";
 
 export interface DraftTask {
@@ -355,6 +356,7 @@ function queueBackup(): void {
     try {
       const json = serializeBackup(useApp.getState());
       persistBackup(json);
+      window.dispatchEvent(new Event("sandeshdo:cloud-backup"));
       useApp.setState((s) => ({
         settings: { ...s.settings, lastBackupDay: dayKey(), lastBackupAt: Date.now() },
       }));
@@ -409,7 +411,7 @@ export const useApp = create<AppState>()(
       notes: BOOT.notes,
       plans: BOOT.plans,
       vault: BOOT.vault,
-      vaultUnlocked: false,
+      vaultUnlocked: true,
       game: BOOT.game,
       settings: BOOT.settings,
       focus: DEFAULT_FOCUS,
@@ -1188,7 +1190,7 @@ export const useApp = create<AppState>()(
           notes: data.notes ?? [],
           plans: data.plans ?? [],
           vault: data.vault ?? [],
-          vaultUnlocked: false,
+          vaultUnlocked: true,
         });
         armScheduler();
         queueBackup();
@@ -1231,6 +1233,33 @@ export const useApp = create<AppState>()(
     }),
     {
       name: "sandeshdo-v2",
+      storage: {
+        getItem: async (name: string) => {
+          try {
+            const raw = localStorage.getItem(name);
+            if (!raw) return null;
+            const parsed = JSON.parse(raw) as { state: AppState; version?: number };
+            if (parsed.state?.vault?.length) {
+              parsed.state.vault = await decryptVaultItems(parsed.state.vault);
+            }
+            return parsed;
+          } catch {
+            return null;
+          }
+        },
+        setItem: async (name: string, value: unknown) => {
+          try {
+            const parsed = structuredClone(value) as { state?: { vault?: VaultItem[] } };
+            if (parsed.state?.vault?.length) {
+              parsed.state.vault = await encryptVaultItems(parsed.state.vault);
+            }
+            localStorage.setItem(name, JSON.stringify(parsed));
+          } catch {
+            localStorage.setItem(name, JSON.stringify(value));
+          }
+        },
+        removeItem: (name: string) => localStorage.removeItem(name),
+      } as never,
       partialize: (s) => ({
         tasks: s.tasks,
         subtasks: s.subtasks,
@@ -1300,7 +1329,7 @@ export const useApp = create<AppState>()(
           notes: p.notes ?? current.notes ?? [],
           plans: p.plans ?? current.plans ?? [],
           vault: p.vault ?? current.vault ?? [],
-          vaultUnlocked: false,
+          vaultUnlocked: true,
           game: wipeDemo
             ? { ...DEFAULT_GAME }
             : {

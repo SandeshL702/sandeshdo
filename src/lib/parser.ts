@@ -16,10 +16,37 @@ export interface ParsedTask {
 }
 
 const PREFIX =
-  /^(?:please\s+)?(?:remind me to|remind me|remember to|don't forget to|dont forget to|i need to|i have to|todo:?|task:?|yaad rakh|yaad dilana|mujhe yaad|add karo?|kaam hai)\s+/i;
+  /^(?:please\s+|plz\s+)?(?:remind me to|remind me|remember to|don't forget to|dont forget to|i need to|i have to|todo:?|task:?|yaad rakhna|yaad rakh|yaad dilana|mujhe yaad|mujhe|merko|add karo?|kaam hai|set reminder)\s+/i;
 
 const DURATION_RE = /\b(?:for\s+)?(\d+)\s*(minutes?|mins?|hours?|hrs?)\b/i;
 const RELATIVE_IN_RE = /\bin\s+(\d+)\s*(minutes?|mins?|hours?|hrs?)\b/i;
+
+const SLOT_HOUR: Record<string, number> = {
+  subah: 8,
+  morning: 8,
+  dopahar: 13,
+  afternoon: 13,
+  shaam: 18,
+  sham: 18,
+  evening: 18,
+  raat: 21,
+  night: 21,
+  tonight: 20,
+};
+
+export function tidyTitle(raw: string): string {
+  let t = raw.trim();
+  t = t.replace(/^(?:please|plz|mujhe|merko)\s+/i, "");
+  for (let i = 0; i < 6; i++) {
+    const next = t
+      .replace(/\s+(?:ko|se|tak|hai|khatam|finish|complete|karna|karo|kardo|dena|do|please|plz)$/i, "")
+      .replace(/\s+(?:kar\s+(?:na|do|dena|ke))$/i, "")
+      .trim();
+    if (next === t) break;
+    t = next;
+  }
+  return t.replace(/\s{2,}/g, " ").replace(/[.,;:]+$/g, "").trim();
+}
 
 function stripOnce(src: string, re: RegExp): { text: string; match: RegExpMatchArray | null } {
   const match = src.match(re);
@@ -173,10 +200,10 @@ function extractTime(text: string): {
     return { text: baje.text, hour, minute, label: formatTimeLabel(hour, minute) };
   }
 
-  const slotOnly = stripOnce(text, /\b(subah|shaam|sham|dopahar|raat)\b/i);
+  const slotOnly = stripOnce(text, /\b(subah|shaam|sham|dopahar|raat|evening|morning|afternoon|night)(?:\s+ko|\s+tak)?\b/i);
   if (slotOnly.match) {
     const slot = slotOnly.match[1].toLowerCase();
-    const hour = slot === "subah" ? 8 : slot === "dopahar" ? 13 : slot === "raat" ? 21 : 18;
+    const hour = SLOT_HOUR[slot] ?? 18;
     return { text: slotOnly.text, hour, minute: 0, label: formatTimeLabel(hour, 0) };
   }
 
@@ -245,6 +272,30 @@ export function parseNaturalLanguage(input: string, now = Date.now()): ParsedTas
     explicitDate = true;
     explicitTime = true;
     text = text.replace(relative[0], " ").replace(/\s+/g, " ").trim();
+  }
+
+  const combo = text.match(
+    /\b(aaj|kal|parso|today|tomorrow|tonight)\s+(subah|shaam|sham|dopahar|raat|evening|morning|afternoon|night)(?:\s+ko|\s+tak)?\b/i,
+  );
+  if (combo && !explicitDate) {
+    const dayWord = combo[1].toLowerCase();
+    const slot = combo[2].toLowerCase();
+    const hour = SLOT_HOUR[dayWord === "tonight" ? "tonight" : slot] ?? 18;
+    if (dayWord === "kal" || dayWord === "tomorrow") {
+      due = addDays(new Date(now), 1);
+      dateLabel = "Tomorrow";
+    } else if (dayWord === "parso") {
+      due = addDays(new Date(now), 2);
+      dateLabel = "Day after";
+    } else {
+      due = new Date(now);
+      dateLabel = dayWord === "tonight" ? "Tonight" : "Today";
+    }
+    due = applyTime(due, hour, 0);
+    timeLabel = formatTimeLabel(hour, 0);
+    explicitDate = true;
+    explicitTime = true;
+    text = text.replace(combo[0], " ").replace(/\s+/g, " ").trim();
   }
 
   const tomorrow = text.match(/\b(tomorrow|kal)\b/i);
@@ -337,6 +388,8 @@ export function parseNaturalLanguage(input: string, now = Date.now()): ParsedTas
   if (due && due.getTime() <= now) {
     if (rec.rule) {
       due = rollForward(due, rec.rule, now);
+    } else if (explicitDate) {
+      /* keep — “aaj sham” after 6pm is overdue today, not tomorrow */
     } else if (explicitTime) {
       due = addDays(due, 1);
       if (!dateLabel) dateLabel = "Tomorrow";
@@ -347,10 +400,12 @@ export function parseNaturalLanguage(input: string, now = Date.now()): ParsedTas
     dateLabel = isSameDayLocal(due, new Date(now)) ? "Today" : "Tomorrow";
   }
 
-  const title = text
-    .replace(/\b(at|on|for)\s*$/i, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  const title = tidyTitle(
+    text
+      .replace(/\b(at|on|for)\s*$/i, "")
+      .replace(/\s+/g, " ")
+      .trim(),
+  );
 
   let confidence: ParsedTask["confidence"] = "low";
   if (title && explicitTime && (explicitDate || rec.rule)) confidence = "high";

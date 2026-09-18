@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { IconButton } from "@/components/ui";
@@ -20,7 +20,7 @@ export function Sheet({
 }: {
   open: boolean;
   onClose: () => void;
-  title?: string;
+  title?: ReactNode;
   children: React.ReactNode;
   footer?: React.ReactNode;
   tall?: boolean;
@@ -85,7 +85,7 @@ export function Sheet({
   if (!open) return null;
 
   return (
-    <div className="sd-sheet-root fixed inset-0 flex items-end justify-center overscroll-none sm:items-center">
+    <div className="sd-sheet-root fixed inset-0 z-[200] flex items-end justify-center overscroll-none sm:items-center">
       <button
         type="button"
         aria-label="Close"
@@ -101,7 +101,7 @@ export function Sheet({
       >
         <div className="mx-auto mt-3 h-1 w-10 rounded-full bg-fg/15 sm:hidden" />
         <div className="flex items-center justify-between gap-3 px-5 pt-3 pb-2">
-          <h2 className="min-w-0 truncate text-lg font-semibold tracking-tight">{title}</h2>
+          <h2 className="min-w-0 text-lg font-semibold tracking-tight">{title}</h2>
           <IconButton className="size-10 shrink-0 rounded-xl" onClick={onClose} aria-label="Close">
             <X className="size-4" />
           </IconButton>

@@ -13,11 +13,10 @@ import { SnoozeSheet } from "@/components/snooze-sheet";
 import { registerReminderWorker, armCues, ensureNotificationPermission } from "@/lib/notifications";
 import { JuiceLayer } from "@/components/juice";
 import { persistBackup, serializeBackup } from "@/lib/backup";
+import { pushCloudBackup } from "@/lib/cloud-backup";
 import { useT } from "@/lib/i18n";
 import type { TxType } from "@/lib/types";
-import { Splash } from "@/components/splash";
 import { Assistant } from "@/components/assistant";
-import { AppLock } from "@/components/app-lock";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { t } = useT();
@@ -264,7 +263,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       return;
     }
     if (pathname.startsWith("/notes")) {
-      window.dispatchEvent(new Event("sandeshdo:assistant"));
+      window.dispatchEvent(new Event("sandeshdo:new-note"));
       return;
     }
     setPrefill("");
@@ -275,8 +274,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-dvh bg-bg text-fg" suppressHydrationWarning>
-      <Splash />
-      <AppLock />
+      <CloudSync />
       <div className="relative mx-auto flex min-h-dvh w-full max-w-xl flex-col lg:border-x lg:border-border">
         <div className="flex-1 pb-28 pt-[env(safe-area-inset-top)]">{children}</div>
         <nav className="pointer-events-none fixed bottom-0 left-1/2 z-30 w-full max-w-xl -translate-x-1/2 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
@@ -357,4 +355,26 @@ function DockLink({
       {item.label}
     </Link>
   );
+}
+
+function CloudSync() {
+  useEffect(() => {
+    let last = 0;
+    const on = () => {
+      const now = Date.now();
+      if (now - last < 8000) return;
+      last = now;
+      try {
+        const payload = serializeBackup(useApp.getState());
+        void pushCloudBackup({ data: { payload } }).catch(() => {
+          /* signed out is fine */
+        });
+      } catch {
+        /* ignore */
+      }
+    };
+    window.addEventListener("sandeshdo:cloud-backup", on);
+    return () => window.removeEventListener("sandeshdo:cloud-backup", on);
+  }, []);
+  return null;
 }

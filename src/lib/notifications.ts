@@ -26,6 +26,7 @@ declare global {
       seedNotification?: () => void;
       hideSplash?: () => void;
       askGemini?: (key: string, prompt: string) => string;
+      askHttp?: (url: string, authorization: string, body: string) => string;
       alertHealth?: () => string;
       pinToday?: (json: string) => void;
       saveBackup?: (json: string) => string;

@@ -50,7 +50,7 @@ export function buildBackup(snap: Snapshot): BackupFile {
     game: snap.game,
     notes: snap.notes ?? [],
     plans: snap.plans ?? [],
-    vault: snap.vault ?? [],
+    vault: (snap.vault ?? []).map((item) => ({ ...item, secret: "" })),
   };
 }
 

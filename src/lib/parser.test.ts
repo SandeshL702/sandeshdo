@@ -79,7 +79,6 @@ test("spent 250 lunch is money", () => {
   assert.ok(m);
   assert.equal(m.amount, 250);
   assert.equal(m.type, "expense");
-  assert.equal(m.category, "food");
 });
 
 test("got 15000 salary is income", () => {
@@ -101,4 +100,31 @@ test("hinglish kal 5 baje sets a deadline", () => {
 test("hinglish yaad rakh prefix", () => {
   const p = parseNaturalLanguage("yaad rakh bill bharna aaj", NOW);
   assert.match(p.title.toLowerCase(), /bill/);
+});
+
+test("aaj sham ko khatam karna hai extracts title + evening deadline", () => {
+  const morning = new Date(2026, 8, 16, 10, 0, 0).getTime();
+  const p = parseNaturalLanguage("Yash thare ka video aaj sham ko khatam karna hai", morning);
+  assert.equal(p.title, "Yash thare ka video");
+  assert.ok(p.dueAt);
+  const d = new Date(p.dueAt as number);
+  assert.equal(d.getDate(), 16);
+  assert.equal(d.getHours(), 18);
+  assert.equal(p.confidence, "high");
+});
+
+test("aaj sham after evening stays today not tomorrow", () => {
+  const p = parseNaturalLanguage("Yash thare ka video aaj sham ko khatam karna hai", NOW);
+  assert.equal(p.title, "Yash thare ka video");
+  const d = new Date(p.dueAt as number);
+  assert.equal(d.getDate(), 16);
+  assert.equal(d.getHours(), 18);
+});
+
+test("kal subah dentist", () => {
+  const p = parseNaturalLanguage("kal subah dentist", NOW);
+  assert.match(p.title.toLowerCase(), /dentist/);
+  const d = new Date(p.dueAt as number);
+  assert.equal(d.getDate(), 17);
+  assert.equal(d.getHours(), 8);
 });

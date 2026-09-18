@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { LayoutGrid, Settings, Sparkles } from "lucide-react";
+import { LayoutGrid, NotebookPen, Sparkles } from "lucide-react";
 import { useT } from "@/lib/i18n";
 
 export function HeaderActions() {
@@ -15,18 +15,18 @@ export function HeaderActions() {
         <Sparkles className="size-5" />
       </button>
       <Link
+        to="/notes"
+        aria-label={t("nav.notes")}
+        className="flex size-11 items-center justify-center rounded-2xl text-muted transition-colors duration-150 hover:text-fg"
+      >
+        <NotebookPen className="size-5" />
+      </Link>
+      <Link
         to="/more"
         aria-label={t("nav.more")}
         className="flex size-11 items-center justify-center rounded-2xl text-muted transition-colors duration-150 hover:text-fg"
       >
         <LayoutGrid className="size-5" />
-      </Link>
-      <Link
-        to="/settings"
-        aria-label={t("nav.settings")}
-        className="flex size-11 items-center justify-center rounded-2xl text-muted transition-colors duration-150 hover:text-fg"
-      >
-        <Settings className="size-5" />
       </Link>
     </div>
   );

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
@@ -44,6 +44,12 @@ export function NotesPage() {
     setColor("paper");
     setOpen(true);
   };
+
+  useEffect(() => {
+    const onNew = () => startNew();
+    window.addEventListener("sandeshdo:new-note", onNew);
+    return () => window.removeEventListener("sandeshdo:new-note", onNew);
+  }, []);
 
   const startEdit = (note: Note) => {
     setEditing(note);

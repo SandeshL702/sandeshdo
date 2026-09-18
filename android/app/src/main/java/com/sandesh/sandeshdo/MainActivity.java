@@ -37,12 +37,14 @@ import androidx.core.view.WindowInsetsControllerCompat;
 import androidx.webkit.WebViewAssetLoader;
 import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
+import java.lang.ref.WeakReference;
 import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends AppCompatActivity {
     private static final String ORIGIN = "https://appassets.androidplatform.net";
     private static final Uri INDEX = Uri.parse(ORIGIN + "/index.html");
 
+    private static WeakReference<MainActivity> live = new WeakReference<>(null);
     private WebView webView;
     private PermissionRequest pendingWebPermission;
     private boolean askedNotify;
@@ -53,6 +55,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        live = new WeakReference<>(this);
         Window window = getWindow();
         window.setStatusBarColor(Color.parseColor("#0B6B58"));
         window.setNavigationBarColor(Color.parseColor("#0B6B58"));
@@ -137,7 +140,7 @@ public class MainActivity extends AppCompatActivity {
             bootFromAssets();
         }
         handleOpenTask(getIntent());
-        new Handler(Looper.getMainLooper()).postDelayed(this::hideSplash, 2800);
+        new Handler(Looper.getMainLooper()).postDelayed(this::hideSplash, 1400);
 
                         getOnBackPressedDispatcher()
                                 .addCallback(

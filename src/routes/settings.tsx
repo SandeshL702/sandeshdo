@@ -4,7 +4,11 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { Button, FieldLabel, Input, Switch } from "@/components/ui";
 import { parseBackup, persistBackup, serializeBackup, shareBackup } from "@/lib/backup";
-import { hashPin } from "@/lib/crypto";
+import { testGeminiKey } from "@/lib/assistant";
+import { pullCloudBackup, pushCloudBackup } from "@/lib/cloud-backup";
+import { authEnabled, signIn } from "@/lib/auth/client";
+import { UserButton } from "@/lib/auth/gates";
+import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { ensureNotificationPermission, playGentleTone, readNativeHealth, sendTestPopup } from "@/lib/notifications";
 import { selectStats, useApp } from "@/lib/store";
 import { useT } from "@/lib/i18n";
@@ -48,7 +52,8 @@ export function SettingsPage() {
   const [editPaisaName, setEditPaisaName] = useState("");
   const [health, setHealth] = useState(() => readNativeHealth());
   const [countdown, setCountdown] = useState<number | null>(null);
-  const [pinDraft, setPinDraft] = useState("");
+  const [geminiCheck, setGeminiCheck] = useState("");
+  const [geminiBusy, setGeminiBusy] = useState(false);
 
   useEffect(() => {
     const refresh = () => setHealth(readNativeHealth());
@@ -129,24 +134,70 @@ export function SettingsPage() {
       </Section>
 
       <Section title={t("ai.settings")}>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold">{t("settings.voice")}</p>
+            <p className="mt-0.5 text-xs text-muted">{t("settings.voiceHint")}</p>
+          </div>
+          <Switch
+            checked={settings.voiceEnabled !== false}
+            onCheckedChange={(on) => patchSettings({ voiceEnabled: on })}
+          />
+        </div>
         <p className="mb-3 text-sm text-muted">{t("ai.settingsHint")}</p>
         <FieldLabel>{t("ai.key")}</FieldLabel>
         <Input
           type="password"
           autoComplete="off"
           value={settings.geminiApiKey ?? ""}
-          onChange={(e) => patchSettings({ geminiApiKey: e.target.value.trim() })}
-          placeholder="AIza…"
+          onChange={(e) => {
+            patchSettings({ geminiApiKey: e.target.value.replace(/\s+/g, "") });
+            setGeminiCheck("");
+          }}
+          placeholder="AIza…  AQ.  gsk_  sk-or-  sk-"
           className="mt-1"
         />
         <p className="mt-2 text-xs text-subtle">
           {(settings.geminiApiKey ?? "").length > 10 ? t("ai.keySaved") : t("ai.hintLocal")}
         </p>
+        <Button
+          className="mt-3 w-full"
+          variant="secondary"
+          disabled={geminiBusy}
+          onClick={() => {
+            setGeminiBusy(true);
+            setGeminiCheck(t("ai.testing"));
+            void testGeminiKey(settings.geminiApiKey ?? "").then((result) => {
+              setGeminiBusy(false);
+              setGeminiCheck(result.ok ? `${t("ai.testOk")} · ${result.message}` : result.message);
+              toast[result.ok ? "success" : "error"](result.message);
+            });
+          }}
+        >
+          {geminiBusy ? t("ai.testing") : t("ai.test")}
+        </Button>
+        {geminiCheck ? <p className="mt-2 text-xs text-muted">{geminiCheck}</p> : null}
         {(settings.geminiApiKey ?? "").length > 0 && (
           <Button className="mt-2" variant="ghost" onClick={() => patchSettings({ geminiApiKey: "" })}>
             {t("ai.keyClear")}
           </Button>
         )}
+        <a
+          href="https://aistudio.google.com/apikey"
+          target="_blank"
+          rel="noreferrer"
+          className="mt-3 block text-sm font-semibold text-primary"
+        >
+          {t("ai.studio")}
+        </a>
+        <div className="mt-1 flex flex-wrap gap-3 text-xs font-semibold text-primary">
+          <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer">
+            Groq
+          </a>
+          <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">
+            OpenRouter
+          </a>
+        </div>
         <Button
           className="mt-3 w-full"
           variant="secondary"
@@ -315,36 +366,8 @@ export function SettingsPage() {
         </div>
       </Section>
 
-      <Section title={t("settings.pin")}>
-        <p className="mb-3 text-sm text-muted">{t("settings.pinHint")}</p>
-        {settings.pinHash ? <p className="mb-2 text-xs text-primary">{t("settings.pinSet")}</p> : null}
-        <Input
-          inputMode="numeric"
-          autoComplete="off"
-          maxLength={8}
-          value={pinDraft}
-          onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, "").slice(0, 8))}
-          placeholder="••••"
-          className="h-14 text-center text-2xl tracking-[0.4em]"
-        />
-        <Button
-          className="mt-3 w-full"
-          disabled={pinDraft.length < 4}
-          onClick={async () => {
-            const hash = await hashPin(pinDraft);
-            patchSettings({ pinHash: hash });
-            useApp.getState().unlockVault();
-            setPinDraft("");
-            toast(t("settings.pinSet"));
-          }}
-        >
-          {t("vault.setPin")}
-        </Button>
-        {settings.pinHash ? (
-          <Button className="mt-2 w-full" variant="ghost" onClick={() => patchSettings({ pinHash: "" })}>
-            {t("settings.pinClear")}
-          </Button>
-        ) : null}
+      <Section title={t("settings.google")}>
+        <GoogleBackupCard />
       </Section>
 
       <Section title={t("settings.reminders")}>
@@ -665,6 +688,76 @@ function WeekRecap() {
         </div>
       ))}
     </div>
+  );
+}
+
+function GoogleBackupCard() {
+  const { t } = useT();
+  const { user, isPending } = useCurrentUserState();
+  const importAll = useApp((s) => s.importAll);
+  const patchSettings = useApp((s) => s.patchSettings);
+  const [busy, setBusy] = useState(false);
+
+  const syncUp = async () => {
+    setBusy(true);
+    try {
+      const payload = serializeBackup(useApp.getState());
+      const res = await pushCloudBackup({ data: { payload } });
+      if (res.ok) {
+        patchSettings({ lastBackupAt: Date.now(), lastBackupDay: new Date().toISOString().slice(0, 10) });
+        toast(t("backup.cloudSaved"));
+      } else toast(t("backup.failed"));
+    } catch {
+      toast(t("backup.failed"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const syncDown = async () => {
+    setBusy(true);
+    try {
+      const res = await pullCloudBackup();
+      if (!res.payload) {
+        toast(t("backup.cloudEmpty"));
+        return;
+      }
+      importAll(parseBackup(res.payload));
+      toast(t("backup.restored"));
+    } catch {
+      toast(t("backup.bad"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <p className="mb-3 text-sm text-muted">{t("settings.googleHint")}</p>
+      {isPending ? (
+        <div className="h-11 w-full animate-pulse rounded-2xl bg-bg" />
+      ) : user ? (
+        <>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <span className="min-w-0 truncate text-sm font-semibold">{user.displayName || user.primaryEmail || "Google"}</span>
+            <UserButton />
+          </div>
+          <Button className="w-full" disabled={busy} onClick={() => void syncUp()}>
+            {t("settings.googleSave")}
+          </Button>
+          <Button className="mt-2 w-full" variant="secondary" disabled={busy} onClick={() => void syncDown()}>
+            {t("settings.googleRestore")}
+          </Button>
+        </>
+      ) : authEnabled ? (
+        <Button className="w-full" onClick={() => signIn("grok-google", { callbackURL: "/settings" })}>
+          {t("settings.googleConnect")}
+        </Button>
+      ) : (
+        <p className="text-sm text-muted">{t("settings.googlePhone")}</p>
+      )}
+      <p className="mt-3 text-xs text-subtle">{t("settings.vaultSecure")}</p>
+    </>
   );
 }
 

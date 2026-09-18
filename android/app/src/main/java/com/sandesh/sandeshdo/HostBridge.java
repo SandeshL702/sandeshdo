@@ -31,7 +31,6 @@ import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.net.URLEncoder;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -223,69 +222,252 @@ public class HostBridge {
 
     @JavascriptInterface
     public String askGemini(String key, String prompt) {
-        if (key == null || key.trim().isEmpty() || prompt == null || prompt.trim().isEmpty()) {
+        String k = sanitizeGeminiKey(key);
+        if (k.isEmpty() || prompt == null || prompt.trim().isEmpty()) {
             return "ERR:missing";
         }
-        String[] models =
-                new String[] {"gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"};
         String last = "ERR:no model";
-        for (String model : models) {
-            try {
-                String url =
-                        "https://generativelanguage.googleapis.com/v1beta/models/"
-                                + model
-                                + ":generateContent?key="
-                                + URLEncoder.encode(key.trim(), "UTF-8");
-                JSONObject body = new JSONObject();
-                JSONArray contents = new JSONArray();
-                JSONObject user = new JSONObject();
-                user.put("role", "user");
-                JSONArray parts = new JSONArray();
-                JSONObject part = new JSONObject();
-                part.put("text", prompt);
-                parts.put(part);
-                user.put("parts", parts);
-                contents.put(user);
-                body.put("contents", contents);
-                JSONObject gen = new JSONObject();
-                gen.put("temperature", 0.3);
-                gen.put("maxOutputTokens", 500);
-                gen.put("responseMimeType", "application/json");
-                body.put("generationConfig", gen);
-
-                HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
-                conn.setRequestMethod("POST");
-                conn.setRequestProperty("Content-Type", "application/json");
-                conn.setConnectTimeout(12000);
-                conn.setReadTimeout(20000);
-                conn.setDoOutput(true);
-                OutputStream os = conn.getOutputStream();
-                os.write(body.toString().getBytes(StandardCharsets.UTF_8));
-                os.close();
-                int code = conn.getResponseCode();
-                InputStream in = code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream();
-                String raw = in != null ? readStream(in) : "";
-                conn.disconnect();
-                if (code >= 200 && code < 300) {
-                    JSONObject res = new JSONObject(raw);
-                    JSONArray cands = res.optJSONArray("candidates");
-                    if (cands != null && cands.length() > 0) {
-                        JSONObject content = cands.getJSONObject(0).optJSONObject("content");
-                        if (content != null) {
-                            JSONArray outParts = content.optJSONArray("parts");
-                            if (outParts != null && outParts.length() > 0) {
-                                String text = outParts.getJSONObject(0).optString("text", "");
-                                if (text.length() > 0) return text;
-                            }
-                        }
-                    }
-                }
-                last = "ERR:" + code;
-            } catch (Exception e) {
-                last = "ERR:" + (e.getMessage() == null ? "net" : e.getMessage());
+        String[] models = geminiModelOrder();
+        for (int i = 0; i < Math.min(4, models.length); i++) {
+            GeminiHit hit = interactGemini(k, models[i], prompt);
+            if (hit.text != null && hit.text.length() > 0) {
+                cachedGeminiModel = models[i];
+                return hit.text;
             }
+            if (hit.error != null) last = hit.error;
+            if (hit.fatal) return last;
+        }
+        for (String model : models) {
+            GeminiHit hit = generateGemini(k, model, prompt);
+            if (hit.text != null && hit.text.length() > 0) {
+                cachedGeminiModel = model;
+                return hit.text;
+            }
+            if (hit.error != null) last = hit.error;
+            if (hit.fatal) return last;
         }
         return last;
+    }
+
+    @JavascriptInterface
+    public String askHttp(String url, String authorization, String body) {
+        if (url == null || url.trim().isEmpty() || body == null) return "ERR:missing";
+        HttpURLConnection conn = null;
+        try {
+            conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("Accept", "application/json");
+            if (authorization != null && !authorization.trim().isEmpty()) {
+                conn.setRequestProperty("Authorization", authorization.trim());
+            }
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(20000);
+            conn.setDoOutput(true);
+            OutputStream os = conn.getOutputStream();
+            os.write(body.getBytes(StandardCharsets.UTF_8));
+            os.close();
+            int code = conn.getResponseCode();
+            InputStream in = code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream();
+            String raw = in != null ? readStream(in) : "";
+            if (code >= 200 && code < 300) return raw == null ? "" : raw;
+            return "ERR:" + code + ":" + (raw == null ? "" : raw);
+        } catch (Exception e) {
+            return "ERR:" + (e.getMessage() == null ? "net" : e.getMessage());
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+    }
+
+    private static volatile String cachedGeminiModel = null;
+    private static final String[] GEMINI_MODELS =
+            new String[] {
+                "gemini-3.8-flash",
+                "gemini-3.7-flash",
+                "gemini-3.6-flash",
+                "gemini-3.5-flash-lite",
+                "gemini-3.5-flash",
+                "gemini-2.5-flash-lite",
+                "gemini-2.5-flash"
+            };
+
+    private static class GeminiHit {
+        String text;
+        String error;
+        boolean fatal;
+    }
+
+    private static String sanitizeGeminiKey(String key) {
+        if (key == null) return "";
+        String s = key.trim().replaceAll("(?i)^(Bearer|x-goog-api-key)\\s*[:\\s=]+", "");
+        return s.replaceAll("\\s+", "").trim();
+    }
+
+    private static String[] geminiModelOrder() {
+        if (cachedGeminiModel == null || cachedGeminiModel.isEmpty()) return GEMINI_MODELS;
+        String[] out = new String[GEMINI_MODELS.length];
+        out[0] = cachedGeminiModel;
+        int n = 1;
+        for (String m : GEMINI_MODELS) {
+            if (!m.equals(cachedGeminiModel)) out[n++] = m;
+        }
+        return out;
+    }
+
+    private GeminiHit generateGemini(String key, String model, String prompt) {
+        JSONObject body = new JSONObject();
+        try {
+            JSONArray contents = new JSONArray();
+            JSONObject user = new JSONObject();
+            JSONArray parts = new JSONArray();
+            JSONObject part = new JSONObject();
+            part.put("text", prompt);
+            parts.put(part);
+            user.put("parts", parts);
+            contents.put(user);
+            body.put("contents", contents);
+            JSONObject gen = new JSONObject();
+            gen.put("temperature", 0.2);
+            gen.put("maxOutputTokens", 2048);
+            JSONObject think = new JSONObject();
+            think.put("thinkingBudget", 0);
+            gen.put("thinkingConfig", think);
+            body.put("generationConfig", gen);
+        } catch (Exception ignored) {
+        }
+        GeminiHit hit =
+                geminiPost(
+                        "https://generativelanguage.googleapis.com/v1beta/models/"
+                                + model
+                                + ":generateContent",
+                        key,
+                        body);
+        if (hit.text == null && hit.error != null && !hit.fatal) {
+            try {
+                body.remove("generationConfig");
+                JSONObject gen = new JSONObject();
+                gen.put("temperature", 0.2);
+                gen.put("maxOutputTokens", 2048);
+                body.put("generationConfig", gen);
+            } catch (Exception ignored) {
+            }
+            hit =
+                    geminiPost(
+                            "https://generativelanguage.googleapis.com/v1beta/models/"
+                                    + model
+                                    + ":generateContent",
+                            key,
+                            body);
+        }
+        return hit;
+    }
+
+    private GeminiHit interactGemini(String key, String model, String prompt) {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("model", model);
+            body.put("input", prompt);
+            JSONObject gen = new JSONObject();
+            gen.put("thinking_level", "low");
+            gen.put("max_output_tokens", 2048);
+            body.put("generation_config", gen);
+        } catch (Exception ignored) {
+        }
+        return geminiPost("https://generativelanguage.googleapis.com/v1beta/interactions", key, body);
+    }
+
+    private GeminiHit geminiPost(String url, String key, JSONObject body) {
+        GeminiHit hit = new GeminiHit();
+        HttpURLConnection conn = null;
+        try {
+            conn = (HttpURLConnection) new URL(url).openConnection();
+            conn.setRequestMethod("POST");
+            conn.setRequestProperty("Content-Type", "application/json");
+            conn.setRequestProperty("Accept", "application/json");
+            conn.setRequestProperty("x-goog-api-key", key);
+            conn.setConnectTimeout(10000);
+            conn.setReadTimeout(20000);
+            conn.setDoOutput(true);
+            OutputStream os = conn.getOutputStream();
+            os.write(body.toString().getBytes(StandardCharsets.UTF_8));
+            os.close();
+            int code = conn.getResponseCode();
+            InputStream in = code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream();
+            String raw = in != null ? readStream(in) : "";
+            if (code >= 200 && code < 300) {
+                Object parsed = raw.trim().startsWith("[") ? new JSONArray(raw) : new JSONObject(raw);
+                String text = extractGeminiText(parsed);
+                if (text.length() > 0) {
+                    hit.text = text;
+                    return hit;
+                }
+                hit.error = "ERR:" + code + ":empty";
+                return hit;
+            }
+            String message = geminiErrorMessage(code, raw);
+            hit.error = "ERR:" + code + ":" + message;
+            hit.fatal =
+                    code == 403
+                            || code == 429
+                            || message.toLowerCase().contains("api key not valid")
+                            || message.toLowerCase().contains("api_key_invalid");
+        } catch (Exception e) {
+            hit.error = "ERR:" + (e.getMessage() == null ? "net" : e.getMessage());
+        } finally {
+            if (conn != null) conn.disconnect();
+        }
+        return hit;
+    }
+
+    private static String geminiErrorMessage(int code, String raw) {
+        try {
+            Object parsed = raw.trim().startsWith("[") ? new JSONArray(raw) : new JSONObject(raw);
+            JSONObject err = null;
+            if (parsed instanceof JSONObject) err = ((JSONObject) parsed).optJSONObject("error");
+            else if (parsed instanceof JSONArray && ((JSONArray) parsed).length() > 0) {
+                JSONObject first = ((JSONArray) parsed).optJSONObject(0);
+                if (first != null) err = first.optJSONObject("error");
+            }
+            if (err != null) {
+                String m = err.optString("message", "");
+                if (m.length() > 0) return m;
+            }
+        } catch (Exception ignored) {
+        }
+        return String.valueOf(code);
+    }
+
+    private static String extractGeminiText(Object node) {
+        if (node == null || node == JSONObject.NULL) return "";
+        if (node instanceof String) return (String) node;
+        StringBuilder sb = new StringBuilder();
+        if (node instanceof JSONArray) {
+            JSONArray a = (JSONArray) node;
+            for (int i = 0; i < a.length(); i++) {
+                appendGemini(sb, extractGeminiText(a.opt(i)));
+            }
+            return sb.toString();
+        }
+        if (!(node instanceof JSONObject)) return "";
+        JSONObject o = (JSONObject) node;
+        if (o.has("output_text")) return o.optString("output_text", "");
+        boolean thought = o.optBoolean("thought", false) || "thought".equals(o.optString("type"));
+        if (!thought && o.has("text")) appendGemini(sb, o.optString("text", ""));
+        if (o.has("parts")) appendGemini(sb, extractGeminiText(o.opt("parts")));
+        if (o.has("candidates")) appendGemini(sb, extractGeminiText(o.opt("candidates")));
+        if (o.has("content")) appendGemini(sb, extractGeminiText(o.opt("content")));
+        if (o.has("outputs")) appendGemini(sb, extractGeminiText(o.opt("outputs")));
+        if (o.has("steps")) appendGemini(sb, extractGeminiText(o.opt("steps")));
+        if (o.has("response")) appendGemini(sb, extractGeminiText(o.opt("response")));
+        return sb.toString();
+    }
+
+    private static void appendGemini(StringBuilder sb, String text) {
+        if (text == null) return;
+        String t = text.trim();
+        if (t.isEmpty()) return;
+        if (sb.length() > 0) sb.append('\n');
+        sb.append(t);
     }
 
     @JavascriptInterface

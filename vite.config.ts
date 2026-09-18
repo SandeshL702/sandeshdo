@@ -11,6 +11,8 @@ import { grokPwaPlugin } from "./scripts/grok-pwa-plugin.mjs";
 // @ts-expect-error JS plugin alongside the TS vite config
 import { appEnvPlugin } from "./scripts/app-env-plugin.mjs";
 import { isMigrationFile } from "./scripts/migration-plan.mjs";
+import { generateWithLlm } from "./src/lib/llm.ts";
+import { runSandyGrok } from "./src/lib/sandy-grok.ts";
 
 /** The files `src/lib/db.ts` globs — same directory, same non-recursive scope. */
 function hasGlobbedMigrations(root: string): boolean {
@@ -142,7 +144,90 @@ function authPopupPlugin(): Plugin {
   };
 }
 
-// `0.0.0.0:8080` is the live-preview contract — don't change host/port.
+function geminiApiPlugin(): Plugin {
+  const handle = async (
+    req: { url?: string; method?: string },
+    res: {
+      statusCode: number;
+      setHeader: (k: string, v: string) => void;
+      end: (b?: string) => void;
+    },
+    next: () => void,
+  ) => {
+    const pathOnly = (req.url ?? "").split("?", 1)[0] ?? "";
+    if (pathOnly !== "/api/gemini" && pathOnly !== "/api/llm" && pathOnly !== "/api/sandy") {
+      next();
+      return;
+    }
+    if ((req.method ?? "GET").toUpperCase() !== "POST") {
+      res.statusCode = 405;
+      res.setHeader("content-type", "application/json; charset=utf-8");
+      res.end(JSON.stringify({ ok: false, error: "POST only" }));
+      return;
+    }
+    const chunks: Buffer[] = [];
+    const nodeReq = req as typeof req & {
+      on: (ev: string, cb: (...args: unknown[]) => void) => void;
+    };
+    nodeReq.on("data", (c: unknown) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(String(c))));
+    nodeReq.on("end", () => {
+      void (async () => {
+        try {
+          const body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}") as {
+            key?: string;
+            prompt?: string;
+            brief?: string;
+            history?: string;
+            now?: string;
+          };
+          if (pathOnly === "/api/sandy") {
+            const result = await runSandyGrok({
+              prompt: body.prompt ?? "",
+              brief: body.brief ?? "",
+              history: body.history ?? "",
+              now: body.now ?? new Date().toISOString(),
+            });
+            res.statusCode = result.ok ? 200 : 400;
+            res.setHeader("content-type", "application/json; charset=utf-8");
+            res.end(JSON.stringify(result));
+            return;
+          }
+          const result = await generateWithLlm(body.key ?? "", body.prompt ?? "");
+          res.statusCode = result.ok ? 200 : 400;
+          res.setHeader("content-type", "application/json; charset=utf-8");
+          res.end(JSON.stringify(result));
+        } catch (err) {
+          res.statusCode = 500;
+          res.setHeader("content-type", "application/json; charset=utf-8");
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: err instanceof Error ? err.message : "gemini proxy failed",
+            }),
+          );
+        }
+      })();
+    });
+    nodeReq.on("error", () => {
+      res.statusCode = 400;
+      res.setHeader("content-type", "application/json; charset=utf-8");
+      res.end(JSON.stringify({ ok: false, error: "bad body" }));
+    });
+  };
+  return {
+    name: "sandeshdo:gemini-api",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        void handle(req, res, next);
+      });
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use((req, res, next) => {
+        void handle(req, res, next);
+      });
+    },
+  };
+}
 // The dev server starts once `src/router.tsx` and `src/routes/` exist — see
 // AGENTS.md § "First scaffold".
 export default defineConfig(({ command, isPreview }) => ({
@@ -165,6 +250,7 @@ export default defineConfig(({ command, isPreview }) => ({
     appEnvPlugin(),
     // PWA head + ?install=1 tutorial page; runs before Start/Nitro.
     grokPwaPlugin(),
+    geminiApiPlugin(),
     tailwindcss(),
     tanstackStart(),
     ...(command === "build" || isPreview

@@ -1,51 +1,89 @@
-# SandeshDo
+<p align="center">
+  <img src="docs/banner.jpg" alt="SandeshDo — Remember it. Do it. Finish it." width="920" />
+</p>
 
-**Remember it. Do it. Finish it.**
+<h1 align="center">SandeshDo</h1>
 
-Private, offline-first tasks + KhataBook-style money. Made by [Sandesh](https://github.com/SandeshL702).
+<p align="center"><strong>Remember it. Do it. Finish it.</strong></p>
 
-SandeshDo is a phone app for capturing work, remembering it with heads-up banners (even when the app is closed), finishing it, and keeping paisa honest.
+<p align="center">
+  Private Android app for people who think in Hinglish.<br/>
+  Say the work once. It becomes a task with a real reminder — even if the app is closed.
+</p>
 
-## What’s in the app
+<p align="center">
+  <a href="https://github.com/SandeshL702/sandeshdo/releases"><img alt="Release" src="https://img.shields.io/github/v/release/SandeshL702/sandeshdo?style=flat-square&color=0f766e" /></a>
+  <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-0f766e?style=flat-square" /></a>
+  <img alt="Offline first" src="https://img.shields.io/badge/offline-first-111?style=flat-square" />
+  <img alt="No account" src="https://img.shields.io/badge/no-account-111?style=flat-square" />
+</p>
 
-- **Tasks** — today, overdue, inbox, calendar (Google Calendar–style month), search, categories
-- **Paisa** — Got / Spent cashbook, budgets, per-day spend graph, freelance + client income categories
-- **Notes / Plans / Vault** — Keep-style notes, long-term plans, PIN-gated passwords. Separate pages, not crammed into Tasks
-- **Sandy** — talks Hinglish, adds tasks with deadlines, logs paisa, notes, plans. Optional Gemini key
-- **Report** — week chart, month in/out, daily spend, category analysis
-- **Alerts** — Android alarm clock + small heads-up banner, soft chime. Works with the app closed
-- **Backup** — JSON on the phone. Share to Drive. Uninstall and restore. PIN locks the app
-- **English / Hinglish** — default English
+<p align="center">
+  <img src="docs/today.png" width="250" alt="Today" />
+  <img src="docs/calendar.png" width="250" alt="Calendar" />
+  <img src="docs/sandy.png" width="250" alt="Sandy" />
+</p>
 
-No accounts. Data stays on the device.
+## Say this. It happens.
 
-## Android APK
+| You say | SandeshDo does |
+|---|---|
+| `Yash ka video aaj sham ko khatam karna hai` | Task **Yash ka video** · today 6pm · reminder on |
+| `kal 5 baje dentist` | Tomorrow 5pm. Heads-up banner when due |
+| `got 500 freelance` | Paisa in |
+| `gaya 80 chai` | Paisa out |
+| `kya pehle karna chahiye` | Sandy reads your list and picks |
 
-Package: `com.sandesh.sandeshdo` · **2.0.0**
+No feed. No streak theater. No “sign in to continue”.
 
-Install the APK, then **Allow notifications** and **exact alarms**. On Xiaomi / Vivo / Oppo also turn **Autostart** on.
+## What’s inside
 
-Updating: install the new APK over the same package. Your data stays.
+- **Today** — overdue, aaj, kal, inbox. Tick it. It’s done.
+- **Calendar** — month view with dots. Tap a day, see the work.
+- **Paisa** — Got / Spent cashbook. Budgets. Day graph. Freelance + client.
+- **Notes · Plans · Vault** — Keep-style notes, long-term plans, AES-locked passwords.
+- **Sandy** — talks Hinglish, adds deadlines, logs money, writes a report. Works without a key.
+- **Alerts** — Android alarm + small heads-up banner. App can be closed.
+- **Backup** — JSON on the phone. Share to Drive. Uninstall, restore.
 
-## Sandy (optional Gemini)
+English or Hinglish. Default English.
 
-1. Open [Google AI Studio](https://aistudio.google.com/apikey) and create a Gemini API key
-2. SandeshDo → Settings → Sandy · Google AI → paste the key
-3. Tap the sparkles — type or hold the mic. Try `kal 5 baje dentist`
+## Install (Android)
 
-Without a key you can still say:
+Package `com.sandesh.sandeshdo`
 
-- `kal 5 baje Rahul ko call`
-- `got 500 freelance`
-- `gaya 80 chai`
-- `note laptop bill`
-- `plan Mahakumbh`
+1. Download the APK from [Releases](https://github.com/SandeshL702/sandeshdo/releases)
+2. Allow **notifications** and **exact alarms**
+3. Xiaomi / Vivo / Oppo — turn **Autostart** on
 
-The key is stored only on the phone. The APK calls Gemini natively (no CORS). Shared backups strip it.
+Install the new APK over the same package. Your data stays.
 
-## Privacy
+## Run from source
 
-- No sign-in
-- Zustand persist (`sandeshdo-v2`) + optional native backup
-- Gemini is called from the device with *your* key only if you paste one
-- Vault secrets never leave the phone
+```bash
+npm i
+npm run dev
+```
+
+Android APK:
+
+```bash
+./android/build-apk.sh
+```
+
+## Privacy, on purpose
+
+- Data lives on the phone
+- Vault is AES-GCM
+- Optional AI key never goes into a shared backup
+- No tracker, no ads, no account
+
+## Stack
+
+React · TanStack Start · Zustand · Android WebView + `AlarmManager`
+
+## License
+
+MIT. Made by [Sandesh](https://github.com/SandeshL702).
+
+If this saves you one missed call, star it so the next person finds it.

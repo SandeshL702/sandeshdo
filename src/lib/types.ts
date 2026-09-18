@@ -148,6 +148,7 @@ export interface Settings {
   notifyRev?: number;
   demoRev?: number;
   pinHash?: string;
+  voiceEnabled?: boolean;
 }
 
 export interface BackupFile {
@@ -296,6 +297,7 @@ export const DEFAULT_SETTINGS: Settings = {
   notifyRev: 19,
   demoRev: 19,
   pinHash: "",
+  voiceEnabled: true,
 };
 
 export const SNOOZE_PRESETS = [

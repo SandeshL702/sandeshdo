@@ -13,7 +13,7 @@ import {
   startOfWeek,
   subMonths,
 } from "date-fns";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { selectDayLoad, useApp } from "@/lib/store";
 import { dayKey } from "@/lib/time";
 import { TaskRow } from "@/components/task-row";
@@ -69,6 +69,7 @@ export function CalendarPage() {
     () => buildDayLog(tasks, completions, transactions, selectedKey, now).sort((a, b) => a.at - b.at),
     [tasks, completions, transactions, selectedKey, now],
   );
+  const openToday = tasks.filter((row) => row.status !== "completed" && row.dueAt && dayKey(row.dueAt) === selectedKey);
 
   const addForDay = () => {
     window.dispatchEvent(
@@ -93,10 +94,9 @@ export function CalendarPage() {
           <ViewSwitch current="cal" />
         </div>
         <div className="mt-5 flex items-center justify-between gap-2">
-          <div className="min-w-0">
-            <h1 className="font-display text-title leading-none font-medium tracking-tight">{format(cursor, "MMMM")}</h1>
-            <p className="mt-1 text-sm font-semibold tabular-nums text-muted">{format(cursor, "yyyy")}</p>
-          </div>
+          <h1 className="font-display min-w-0 text-[1.85rem] leading-none font-medium tracking-tight">
+            {format(cursor, "MMMM yyyy")}
+          </h1>
           <div className="flex shrink-0 items-center">
             <IconButton className="size-10" onClick={() => setCursor((d) => subMonths(d, 1))} aria-label="Previous month">
               <ChevronLeft className="size-5" />
@@ -115,7 +115,7 @@ export function CalendarPage() {
         </div>
       </header>
 
-      <div className="overflow-hidden rounded-xl">
+      <div className="overflow-hidden rounded-2xl bg-surface px-1 pt-2 pb-1 shadow-[var(--sd-card-shadow)]">
         <div className="grid grid-cols-7 text-center">
           {week.map((d) => (
             <div key={d} className="py-2 text-micro font-semibold tracking-wider text-subtle uppercase">
@@ -128,42 +128,33 @@ export function CalendarPage() {
             const key = dayKey(d);
             const selectedDay = key === selectedKey;
             const inMonth = isSameMonth(d, cursor);
-            const titles = load.openTitles.get(key) ?? [];
-            const extra = Math.max(0, (load.remaining.get(key) ?? 0) - titles.length);
+            const remain = load.remaining.get(key) ?? 0;
+            const done = load.finished.get(key) ?? 0;
             return (
               <button
                 key={key}
                 type="button"
                 onClick={() => setSelected(d)}
                 className={cn(
-                  "flex h-20 min-w-0 flex-col items-stretch overflow-hidden rounded-lg px-0.5 py-1 text-left transition-colors duration-150",
-                  selectedDay && "bg-primary/10",
-                  !inMonth && "opacity-40",
+                  "flex h-[3.35rem] min-w-0 flex-col items-center justify-start gap-1 rounded-xl px-0.5 pt-1 text-left transition-colors duration-150",
+                  selectedDay && "bg-primary/12",
+                  !inMonth && "opacity-35",
                 )}
               >
-                <span className="flex justify-center">
-                  <span
-                    className={cn(
-                      "flex size-7 items-center justify-center rounded-full text-xs font-semibold tabular-nums",
-                      isToday(d) && "bg-primary text-primary-fg",
-                      selectedDay && !isToday(d) && "ring-2 ring-primary ring-inset",
-                      !isToday(d) && inMonth && "text-fg",
-                      !inMonth && "text-subtle",
-                    )}
-                  >
-                    {format(d, "d")}
-                  </span>
+                <span
+                  className={cn(
+                    "flex size-7 items-center justify-center rounded-full text-xs font-semibold tabular-nums",
+                    isToday(d) && "bg-primary text-primary-fg",
+                    selectedDay && !isToday(d) && "bg-fg text-bg",
+                    !isToday(d) && !selectedDay && inMonth && "text-fg",
+                    !inMonth && "text-subtle",
+                  )}
+                >
+                  {format(d, "d")}
                 </span>
-                <span className="mt-0.5 min-h-0 flex-1 space-y-0.5 overflow-hidden px-0.5">
-                  {titles.map((title) => (
-                    <span
-                      key={title}
-                      className="block truncate rounded-sm bg-primary/15 px-1 text-micro leading-4 font-medium text-primary"
-                    >
-                      {title}
-                    </span>
-                  ))}
-                  {extra > 0 && <span className="block px-1 text-micro leading-4 text-subtle">+{extra}</span>}
+                <span className="flex h-1.5 items-center justify-center gap-0.5">
+                  {remain > 0 && <span className="size-1.5 rounded-full bg-primary" />}
+                  {done > 0 && remain === 0 && <span className="size-1.5 rounded-full bg-fg/35" />}
                 </span>
               </button>
             );
@@ -173,28 +164,36 @@ export function CalendarPage() {
 
       <div className="mt-5 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="font-display truncate text-xl font-medium tracking-tight">{format(selected, "EEE d MMM")}</h2>
+          <h2 className="font-display truncate text-xl font-medium tracking-tight">{format(selected, "EEEE d MMM")}</h2>
           <p className="mt-1 text-xs text-muted tabular-nums">
             {t("cal.leftChip", { n: remainingCount })} · {t("cal.doneChip", { n: finishedCount })}
             {money.expense + money.income > 0 ? ` · ${formatInr(money.income - money.expense)}` : ""}
           </p>
         </div>
         <Button size="sm" className="shrink-0" onClick={addForDay}>
+          <Plus className="size-3.5" />
           {t("cal.addFor")}
         </Button>
       </div>
 
       <section className="mt-4">
-        {log.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted">{t("cal.emptyOpen")}</p>
+        {openToday.length === 0 && log.length === 0 ? (
+          <button
+            type="button"
+            onClick={addForDay}
+            className="w-full rounded-2xl bg-surface px-4 py-8 text-center shadow-[var(--sd-card-shadow)]"
+          >
+            <p className="text-sm text-muted">{t("cal.emptyOpen")}</p>
+            <p className="mt-2 text-sm font-semibold text-primary">{t("cal.addFor")}</p>
+          </button>
         ) : (
           <div className="space-y-1.5">
-            {log.map((entry) => {
-              if (entry.kind === "open") {
-                const task = tasks.find((row) => row.id === entry.id);
-                if (task) return <TaskRow key={entry.id} task={task} now={now} timeline />;
-              }
-              return (
+            {openToday.map((task) => (
+              <TaskRow key={task.id} task={task} now={now} timeline />
+            ))}
+            {log
+              .filter((entry) => entry.kind !== "open")
+              .map((entry) => (
                 <div key={`${entry.kind}-${entry.id}`} className="grid grid-cols-[4.25rem_1fr] items-center gap-2 py-1">
                   <span className="text-xs text-muted tabular-nums" suppressHydrationWarning>
                     {format(entry.at, "h:mm a")}
@@ -216,8 +215,7 @@ export function CalendarPage() {
                     </span>
                   </div>
                 </div>
-              );
-            })}
+              ))}
           </div>
         )}
       </section>

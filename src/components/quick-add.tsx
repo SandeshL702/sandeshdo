@@ -4,7 +4,7 @@ import { Mic } from "lucide-react";
 import { toast } from "sonner";
 import { Sheet } from "@/components/sheet";
 import { Button, Input } from "@/components/ui";
-import { parseNaturalLanguage } from "@/lib/parser";
+import { parseNaturalLanguage, formatParsedPreview } from "@/lib/parser";
 import { useApp } from "@/lib/store";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -74,6 +74,17 @@ export function QuickAdd({
   const parsed = useMemo(() => parseNaturalLanguage(title), [title]);
   const voiceOk = typeof window !== "undefined" && speechCtor() != null;
 
+  useEffect(() => {
+    if (!parsed.dueAt || parsed.confidence === "low") return;
+    const d = new Date(parsed.dueAt);
+    const today = ymd(new Date());
+    const tom = ymd(addDays(new Date(), 1));
+    const key = ymd(d);
+    setDay(key);
+    setWhen(key === today ? "today" : key === tom ? "tomorrow" : "day");
+    setHour(d.getHours());
+  }, [parsed.dueAt, parsed.confidence]);
+
   const listen = () => {
     const Ctor = speechCtor();
     if (!Ctor) {
@@ -122,12 +133,13 @@ export function QuickAdd({
       toast(t("add.needTitle"));
       return;
     }
-    const dueAt = dueFromChips();
+    const dueAt = when === "none" ? null : (parsed.dueAt ?? dueFromChips());
     addTask({
       title: text,
       priority: important ? "high" : "medium",
       categoryId,
       dueAt,
+      deadline: dueAt,
       recurrence: parsed.recurrence,
       estimatedDuration: parsed.estimatedDuration,
     });
@@ -147,11 +159,24 @@ export function QuickAdd({
       onClose={onClose}
       title={t("add.title")}
       footer={
-        <Button className="h-14 w-full rounded-3xl text-base" size="lg" onClick={submit} disabled={!title.trim()}>
+        <Button
+          type="submit"
+          form="sd-quick-add"
+          className="h-14 w-full rounded-3xl text-base"
+          size="lg"
+          disabled={!title.trim()}
+        >
           {t("add.submit")}
         </Button>
       }
     >
+      <form
+        id="sd-quick-add"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+      >
       <div className="flex gap-2">
         <Input
           ref={inputRef}
@@ -171,6 +196,9 @@ export function QuickAdd({
           </Button>
         )}
       </div>
+      {parsed.confidence !== "low" && parsed.title ? (
+        <p className="mt-2 text-xs font-medium text-primary">{formatParsedPreview(parsed)}</p>
+      ) : null}
 
       <div className="mt-4 grid grid-cols-3 gap-2">
         <button
@@ -260,6 +288,7 @@ export function QuickAdd({
       >
         {t("add.important")}
       </button>
+      </form>
 
       <div className="mt-4">
         <p className="mb-2 text-xs font-semibold tracking-[0.14em] text-muted uppercase">{t("add.category")}</p>
