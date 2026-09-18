@@ -1,0 +1,538 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+  --color-bg: var(--sd-bg);
+  --color-surface: var(--sd-surface);
+  --color-elevated: var(--sd-elevated);
+  --color-fg: var(--sd-fg);
+  --color-muted: var(--sd-muted);
+  --color-subtle: var(--sd-subtle);
+  --color-primary: var(--sd-primary);
+  --color-primary-fg: var(--sd-primary-fg);
+  --color-border: var(--sd-border);
+  --color-overdue: var(--sd-overdue);
+  --color-urgent: var(--sd-urgent);
+  --color-urgent-fg: var(--sd-urgent-fg);
+  --color-high: var(--sd-high);
+  --color-done: var(--sd-done);
+  --color-snooze: var(--sd-snooze);
+  --text-title: 2.125rem;
+  --text-micro: 0.6875rem;
+  --z-overlay: 80;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.875rem;
+  --radius-lg: 1.25rem;
+  --radius-xl: 1.75rem;
+}
+
+:root {
+  --sd-bg: #ece8df;
+  --sd-surface: #f7f4ee;
+  --sd-elevated: #fffcf7;
+  --sd-fg: #171614;
+  --sd-muted: #5e5c56;
+  --sd-subtle: #8a887f;
+  --sd-primary: #0b6b58;
+  --sd-primary-fg: #f6f3ec;
+  --sd-border: color-mix(in oklab, #171614 10%, transparent);
+  --sd-overdue: #c2410c;
+  --sd-urgent: #b42318;
+  --sd-urgent-fg: #fffaf6;
+  --sd-high: #b45309;
+  --sd-done: #0b6b58;
+  --sd-snooze: #3d5a80;
+  --sd-card-shadow:
+    0 0 0 1px color-mix(in oklab, #171614 6%, transparent),
+    0 1px 2px color-mix(in oklab, #171614 5%, transparent),
+    0 8px 24px -16px color-mix(in oklab, #171614 18%, transparent);
+  --sd-dock-shadow:
+    0 0 0 1px color-mix(in oklab, #171614 8%, transparent),
+    0 12px 40px -12px color-mix(in oklab, #171614 28%, transparent);
+  --shadow-border: var(--sd-card-shadow);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dark {
+  --sd-bg: #0c0d0c;
+  --sd-surface: #161716;
+  --sd-elevated: #1d1e1c;
+  --sd-fg: #f3f1ea;
+  --sd-muted: #a4a299;
+  --sd-subtle: #7c7a72;
+  --sd-primary: #3dcfb0;
+  --sd-primary-fg: #06241d;
+  --sd-border: color-mix(in oklab, #f3f1ea 10%, transparent);
+  --sd-overdue: #fb923c;
+  --sd-urgent: #f87171;
+  --sd-urgent-fg: #1a0b0b;
+  --sd-high: #fbbf24;
+  --sd-done: #3dcfb0;
+  --sd-snooze: #93c5fd;
+  --sd-card-shadow: 0 0 0 1px color-mix(in oklab, #f3f1ea 8%, transparent);
+  --sd-dock-shadow:
+    0 0 0 1px color-mix(in oklab, #f3f1ea 10%, transparent),
+    0 16px 40px -12px rgb(0 0 0 / 0.55);
+  --shadow-border: var(--sd-card-shadow);
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: clip;
+  }
+
+  html,
+  body,
+  #app {
+    min-height: 100dvh;
+    background: var(--sd-bg);
+    color: var(--sd-fg);
+  }
+
+  body {
+    font-family: var(--font-sans);
+    margin: 0;
+    overflow-x: clip;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  * {
+    border-color: var(--sd-border);
+  }
+}
+
+.font-display {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+}
+
+.sd-card {
+  background: var(--sd-surface);
+  box-shadow: var(--sd-card-shadow);
+}
+
+.sd-dock {
+  background: color-mix(in oklab, var(--sd-elevated) 88%, transparent);
+  box-shadow: var(--sd-dock-shadow);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.sd-rail {
+  position: relative;
+}
+.sd-rail::before {
+  content: "";
+  position: absolute;
+  top: 1.15rem;
+  bottom: -0.55rem;
+  left: 1.375rem;
+  width: 1px;
+  background: color-mix(in oklab, var(--sd-fg) 12%, transparent);
+}
+
+@keyframes sd-rise {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.sd-rise {
+  animation: sd-rise 280ms var(--ease-out) both;
+}
+
+.sd-seg {
+  padding: 3px;
+  background: var(--sd-surface);
+  box-shadow: var(--sd-card-shadow);
+  border-radius: 999px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sd-rise,
+  .sd-sheet-panel,
+  .sd-overlay,
+  .sd-path-now {
+    animation: none !important;
+  }
+}
+
+.sd-path-stone {
+  transition:
+    transform 180ms var(--ease-out),
+    background-color 180ms var(--ease-out),
+    border-color 180ms var(--ease-out);
+}
+
+.sd-path-now {
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--sd-primary) 22%, transparent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sd-path-now {
+    animation: sd-path-breathe 2.6s var(--ease-out) infinite;
+  }
+}
+
+@keyframes sd-path-breathe {
+  0%,
+  100% {
+    box-shadow: 0 0 0 4px color-mix(in oklab, var(--sd-primary) 18%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 7px color-mix(in oklab, var(--sd-primary) 10%, transparent);
+  }
+}
+
+@keyframes sd-call-ring {
+  0% {
+    transform: scale(0.82);
+    opacity: 0.45;
+  }
+  70% {
+    transform: scale(1.42);
+    opacity: 0;
+  }
+  100% {
+    transform: scale(1.42);
+    opacity: 0;
+  }
+}
+
+.sd-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  animation: sd-rise 280ms var(--ease-out) both;
+}
+
+@keyframes sd-sheet-up {
+  from {
+    transform: translateY(24%);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.sd-sheet-panel {
+  animation: sd-sheet-up 280ms var(--ease-out) both;
+}
+
+.sd-call-mark {
+  isolation: isolate;
+}
+
+.sd-call-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 9999px;
+  border: 1.5px solid color-mix(in oklab, currentColor 35%, transparent);
+  animation: sd-call-ring 2.2s var(--ease-out) infinite;
+  pointer-events: none;
+}
+
+.sd-xp {
+  transition: width 280ms var(--ease-out);
+}
+
+.sd-bar {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in oklab, currentColor 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, currentColor 10%, transparent);
+}
+
+.sd-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 280ms var(--ease-out);
+}
+
+.sd-call-ring-delay {
+  animation-delay: 700ms;
+}
+
+@keyframes sd-pop {
+  0% {
+    transform: scale(0.55);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.sd-pop {
+  animation: sd-pop 420ms var(--ease-out) both;
+}
+
+@keyframes sd-float-up {
+  0% {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-36px);
+    opacity: 0;
+  }
+}
+
+.sd-float-up {
+  animation: sd-float-up 1.25s var(--ease-out) both;
+}
+
+@keyframes sd-combo-stamp {
+  0% {
+    transform: scale(0.4) rotate(-8deg);
+    opacity: 0;
+  }
+  55% {
+    transform: scale(1.12) rotate(2deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+}
+
+.sd-combo-stamp {
+  animation: sd-combo-stamp 380ms var(--ease-out) both;
+}
+
+@keyframes sd-spark {
+  0% {
+    transform: translate(-50%, -50%) scale(0.4);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(calc(-50% + var(--dx, 0px)), calc(-50% + var(--dy, -24px))) scale(0);
+    opacity: 0;
+  }
+}
+
+.sd-spark {
+  animation: sd-spark 700ms var(--ease-out) both;
+}
+
+@keyframes sd-hero-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-7px);
+  }
+}
+
+.sd-hero-bob {
+  animation: sd-hero-bob 2.8s ease-in-out infinite;
+}
+
+.sd-hero-bob .sd-hero-shadow {
+  animation: sd-hero-shadow 2.8s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@keyframes sd-hero-shadow {
+  0%,
+  100% {
+    transform: scaleX(1);
+    opacity: 0.28;
+  }
+  50% {
+    transform: scaleX(0.78);
+    opacity: 0.14;
+  }
+}
+
+@keyframes sd-hero-win {
+  0% {
+    transform: scale(0.86) translateY(10px);
+    opacity: 0;
+  }
+  55% {
+    transform: scale(1.06) translateY(-6px);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) translateY(0);
+    opacity: 1;
+  }
+}
+
+.sd-hero-win {
+  animation: sd-hero-win 560ms var(--ease-out) both;
+}
+
+.sd-hero-down {
+  transform: rotate(12deg) translateY(10px);
+  filter: grayscale(0.35);
+}
+
+@keyframes sd-cape {
+  0%,
+  100% {
+    transform: rotate(-2deg);
+  }
+  50% {
+    transform: rotate(3deg);
+  }
+}
+
+.sd-cape {
+  transform-origin: 100px 96px;
+  animation: sd-cape 3.4s ease-in-out infinite;
+}
+
+.sd-stage {
+  transform-origin: center bottom;
+}
+
+.sd-numpad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+
+.sd-numpad button {
+  height: 3.25rem;
+  border-radius: 1rem;
+  background: var(--sd-bg);
+  color: var(--sd-fg);
+  font-size: 1.35rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  box-shadow: var(--sd-card-shadow);
+}
+
+.sd-life {
+  display: flex;
+  gap: 0.3rem;
+  justify-content: center;
+}
+
+.sd-life i {
+  display: block;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: color-mix(in oklab, currentColor 22%, transparent);
+}
+
+.sd-life i.on {
+  background: currentColor;
+}
+
+.sd-stagger > * {
+  animation: sd-rise 380ms var(--ease-out) both;
+}
+.sd-stagger > *:nth-child(1) { animation-delay: 40ms; }
+.sd-stagger > *:nth-child(2) { animation-delay: 80ms; }
+.sd-stagger > *:nth-child(3) { animation-delay: 120ms; }
+.sd-stagger > *:nth-child(4) { animation-delay: 160ms; }
+.sd-stagger > *:nth-child(5) { animation-delay: 200ms; }
+.sd-stagger > *:nth-child(6) { animation-delay: 240ms; }
+
+.sd-sheet-root {
+  z-index: 80;
+}
+
+.sd-sheet-backdrop {
+  touch-action: none;
+}
+
+html.sd-sheet-open,
+html.sd-sheet-open body {
+  overflow: hidden;
+}
+
+.sd-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--sd-primary);
+  color: var(--sd-primary-fg);
+  pointer-events: none;
+}
+
+.sd-splash-in {
+  animation: sd-splash-in 220ms var(--ease-out) both;
+}
+
+.sd-splash-out {
+  animation: sd-splash-out 260ms var(--ease-out) both;
+}
+
+@keyframes sd-splash-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes sd-splash-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sd-splash-in,
+  .sd-splash-out {
+    animation: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
