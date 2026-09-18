@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CalendarRouteImport } from './routes/calendar'
+import { Route as ExportRouteImport } from './routes/export'
 import { Route as FocusRouteImport } from './routes/focus'
 import { Route as MoneyRouteImport } from './routes/money'
 import { Route as MoreRouteImport } from './routes/more'
@@ -29,6 +30,11 @@ const IndexRoute = IndexRouteImport.update({
 const CalendarRoute = CalendarRouteImport.update({
   id: '/calendar',
   path: '/calendar',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ExportRoute = ExportRouteImport.update({
+  id: '/export',
+  path: '/export',
   getParentRoute: () => rootRouteImport,
 } as any)
 const FocusRoute = FocusRouteImport.update({
@@ -80,6 +86,7 @@ const VaultRoute = VaultRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/calendar': typeof CalendarRoute
+  '/export': typeof ExportRoute
   '/focus': typeof FocusRoute
   '/money': typeof MoneyRoute
   '/more': typeof MoreRoute
@@ -93,6 +100,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/calendar': typeof CalendarRoute
+  '/export': typeof ExportRoute
   '/focus': typeof FocusRoute
   '/money': typeof MoneyRoute
   '/more': typeof MoreRoute
@@ -107,6 +115,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/calendar': typeof CalendarRoute
+  '/export': typeof ExportRoute
   '/focus': typeof FocusRoute
   '/money': typeof MoneyRoute
   '/more': typeof MoreRoute
@@ -122,6 +131,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/calendar'
+    | '/export'
     | '/focus'
     | '/money'
     | '/more'
@@ -135,6 +145,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/calendar'
+    | '/export'
     | '/focus'
     | '/money'
     | '/more'
@@ -148,6 +159,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/calendar'
+    | '/export'
     | '/focus'
     | '/money'
     | '/more'
@@ -162,6 +174,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   CalendarRoute: typeof CalendarRoute
+  ExportRoute: typeof ExportRoute
   FocusRoute: typeof FocusRoute
   MoneyRoute: typeof MoneyRoute
   MoreRoute: typeof MoreRoute
@@ -187,6 +200,13 @@ declare module '@tanstack/react-router' {
       path: '/calendar'
       fullPath: '/calendar'
       preLoaderRoute: typeof CalendarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/export': {
+      id: '/export'
+      path: '/export'
+      fullPath: '/export'
+      preLoaderRoute: typeof ExportRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/focus': {
@@ -258,6 +278,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   CalendarRoute: CalendarRoute,
+  ExportRoute: ExportRoute,
   FocusRoute: FocusRoute,
   MoneyRoute: MoneyRoute,
   MoreRoute: MoreRoute,

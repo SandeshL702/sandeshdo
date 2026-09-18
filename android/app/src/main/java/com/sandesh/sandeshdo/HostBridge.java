@@ -21,6 +21,7 @@ import android.provider.Settings;
 import android.webkit.JavascriptInterface;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 import java.lang.ref.WeakReference;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -678,16 +679,56 @@ public class HostBridge {
     @JavascriptInterface
     public void shareBackup(String json) {
         saveBackup(json);
+        Activity a = activity.get();
         try {
+            File dir = new File(ctx.getCacheDir(), "backup");
+            if (!dir.exists()) dir.mkdirs();
+            File f = new File(dir, BACKUP_NAME);
+            writeBytes(f, (json == null ? "" : json).getBytes(StandardCharsets.UTF_8));
+            Uri uri = FileProvider.getUriForFile(ctx, ctx.getPackageName() + ".files", f);
             Intent i = new Intent(Intent.ACTION_SEND);
-            i.setType("text/plain");
+            i.setType("application/json");
             i.putExtra(Intent.EXTRA_SUBJECT, "SandeshDo backup");
-            i.putExtra(Intent.EXTRA_TEXT, json == null ? "" : json);
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            i.putExtra(Intent.EXTRA_STREAM, uri);
+            i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
             Intent chooser = Intent.createChooser(i, "SandeshDo backup");
-            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            ctx.startActivity(chooser);
-        } catch (Exception ignored) {
+            if (a != null) {
+                a.startActivity(chooser);
+            } else {
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                ctx.startActivity(chooser);
+            }
+        } catch (Exception e) {
+            try {
+                Intent i = new Intent(Intent.ACTION_SEND);
+                i.setType("text/plain");
+                i.putExtra(Intent.EXTRA_SUBJECT, "SandeshDo backup");
+                i.putExtra(Intent.EXTRA_TEXT, json == null ? "" : json);
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                Intent chooser = Intent.createChooser(i, "SandeshDo backup");
+                chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                ctx.startActivity(chooser);
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    @JavascriptInterface
+    public void saveToDrive(String json) {
+        saveBackup(json);
+        Activity a = activity.get();
+        if (a instanceof MainActivity) {
+            ((MainActivity) a).startCreateBackup(json == null ? "" : json);
+            return;
+        }
+        shareBackup(json);
+    }
+
+    @JavascriptInterface
+    public void pickRestore() {
+        Activity a = activity.get();
+        if (a instanceof MainActivity) {
+            ((MainActivity) a).startPickRestore();
         }
     }
 

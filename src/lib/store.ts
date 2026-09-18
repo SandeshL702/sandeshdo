@@ -18,6 +18,7 @@ import {
   type Plan,
   type Priority,
   type RecurrenceRule,
+  type RecurringSpend,
   type Reminder,
   type Settings,
   type Subtask,
@@ -48,7 +49,7 @@ import {
 import { playCompleteSfx, playDamageSfx, playHealSfx, playLevelUpSfx } from "./sfx";
 import { persistBackup, serializeBackup, tryNativeRestore } from "./backup";
 import { decryptVaultItems, encryptVaultItems } from "./crypto";
-import { DEFAULT_BUDGETS, DEFAULT_MONEY_CATEGORIES, ensureIncomeCats } from "./money";
+import { DEFAULT_BUDGETS, DEFAULT_MONEY_CATEGORIES, ensureIncomeCats, isDemoBudgets } from "./money";
 
 export interface DraftTask {
   title: string;
@@ -78,6 +79,11 @@ export interface AppState {
   plans: Plan[];
   vault: VaultItem[];
   vaultUnlocked: boolean;
+  recurringSpends: RecurringSpend[];
+  trashTasks: Task[];
+  trashTx: Transaction[];
+  trashNotes: Note[];
+  trashPlans: Plan[];
   game: GameProgress;
   settings: Settings;
   focus: FocusState;
@@ -91,7 +97,7 @@ export interface AppState {
   updateTask: (id: string, patch: Partial<Task>) => void;
   deleteTask: (id: string) => void;
   completeTask: (id: string) => void;
-  reopenTask: (id: string) => void;
+  reopenTask: (id: string, completionId?: string) => void;
   snoozeTask: (id: string, minutes: number) => void;
   rescheduleTask: (id: string, dueAt: number) => void;
   addSubtask: (taskId: string, title: string) => void;
@@ -105,6 +111,13 @@ export interface AppState {
   deleteMoneyCategory: (id: string) => void;
   addTx: (draft: Omit<Transaction, "id">) => string;
   deleteTx: (id: string) => void;
+  restoreTx: (id: string) => void;
+  restoreTask: (id: string) => void;
+  restoreNote: (id: string) => void;
+  restorePlan: (id: string) => void;
+  addRecurringSpend: (draft: Omit<RecurringSpend, "id" | "lastPostedDay">) => string;
+  removeRecurringSpend: (id: string) => void;
+  toggleRecurringSpend: (id: string, on: boolean) => void;
   setBudget: (category: string, limit: number) => void;
   addNote: (draft: { title: string; body: string; color?: NoteColor }) => string;
   updateNote: (id: string, patch: Partial<Note>) => void;
@@ -149,8 +162,14 @@ export interface AppState {
     notes?: Note[];
     plans?: Plan[];
     vault?: VaultItem[];
+    recurringSpends?: RecurringSpend[];
+    trashTasks?: Task[];
+    trashTx?: Transaction[];
+    trashNotes?: Note[];
+    trashPlans?: Plan[];
   }) => void;
   resetDemo: () => void;
+  clearDemo: () => void;
 }
 
 const DEFAULT_FOCUS: FocusState = {
@@ -335,11 +354,16 @@ function initialClientData() {
     notes: [] as Note[],
     plans: [] as Plan[],
     vault: [] as VaultItem[],
+    recurringSpends: [] as RecurringSpend[],
+    trashTasks: [] as Task[],
+    trashTx: [] as Transaction[],
+    trashNotes: [] as Note[],
+    trashPlans: [] as Plan[],
     game: { ...DEFAULT_GAME },
     settings: {
       ...DEFAULT_SETTINGS,
       seededOnce: true,
-      demoRev: 19,
+      demoRev: 20,
       notifyRev: 19,
     },
   };
@@ -412,6 +436,11 @@ export const useApp = create<AppState>()(
       plans: BOOT.plans,
       vault: BOOT.vault,
       vaultUnlocked: true,
+      recurringSpends: BOOT.recurringSpends,
+      trashTasks: BOOT.trashTasks,
+      trashTx: BOOT.trashTx,
+      trashNotes: BOOT.trashNotes,
+      trashPlans: BOOT.trashPlans,
       game: BOOT.game,
       settings: BOOT.settings,
       focus: DEFAULT_FOCUS,
@@ -437,6 +466,11 @@ export const useApp = create<AppState>()(
         if (!get().categories.length) set({ categories: DEFAULT_CATEGORIES });
         if (!get().moneyCategories.length) set({ moneyCategories: DEFAULT_MONEY_CATEGORIES });
         else set({ moneyCategories: ensureIncomeCats(get().moneyCategories) });
+        if (isDemoBudgets(get().budgets)) {
+          set({ budgets: [], settings: { ...get().settings, demoRev: 20, seededOnce: true } });
+        } else if ((get().settings.demoRev ?? 0) < 20) {
+          set({ settings: { ...get().settings, demoRev: 20 } });
+        }
         if (!restored) get().seedIfNeeded();
         void get().applyWorkerActions();
         get().restoreAlarms();
@@ -449,7 +483,7 @@ export const useApp = create<AppState>()(
           settings: {
             ...settings,
             seededOnce: true,
-            demoRev: 19,
+            demoRev: 20,
             notifyRev: 19,
             notificationsEnabled: true,
           },
@@ -486,16 +520,19 @@ export const useApp = create<AppState>()(
       deleteTask: (id) => {
         const now = Date.now();
         set((s) => {
+          const gone = s.tasks.find((t) => t.id === id);
           const tasks = s.tasks.filter((t) => t.id !== id);
           return {
             tasks,
             subtasks: s.subtasks.filter((st) => st.taskId !== id),
+            trashTasks: gone ? [gone, ...s.trashTasks].slice(0, 40) : s.trashTasks,
             reminders: rebuildReminders(tasks, s.settings, now, s.transactions),
             activeReminderTaskId: s.activeReminderTaskId === id ? null : s.activeReminderTaskId,
             focus: s.focus.taskId === id ? DEFAULT_FOCUS : s.focus,
           };
         });
         armScheduler();
+        queueBackup();
       },
 
       completeTask: (id) => {
@@ -591,18 +628,48 @@ export const useApp = create<AppState>()(
         queueBackup();
       },
 
-      reopenTask: (id) => {
+      reopenTask: (id, completionId) => {
         const now = Date.now();
         set((s) => {
-          const tasks = refreshStatuses(
-            s.tasks.map((t) =>
-              t.id === id ? { ...t, status: "scheduled", completedAt: null, updatedAt: now } : t,
-            ),
-            now,
+          const target =
+            (completionId ? s.completions.find((c) => c.id === completionId) : undefined) ??
+            s.completions.find((c) => c.taskId === id && !c.undoneAt);
+          const completions = s.completions.map((c) =>
+            target && c.id === target.id ? { ...c, undoneAt: now } : c,
           );
-          return { tasks, reminders: rebuildReminders(tasks, s.settings, now, s.transactions) };
+          let trashTasks = s.trashTasks;
+          let tasks = s.tasks;
+          const existing = s.tasks.find((t) => t.id === id);
+          if (existing) {
+            tasks = refreshStatuses(
+              s.tasks.map((t) =>
+                t.id === id ? { ...t, status: "scheduled" as const, completedAt: null, updatedAt: now } : t,
+              ),
+              now,
+            );
+          } else {
+            const dumped = s.trashTasks.find((t) => t.id === id);
+            if (dumped) {
+              tasks = refreshStatuses(
+                [{ ...dumped, status: "scheduled", completedAt: null, updatedAt: now }, ...s.tasks],
+                now,
+              );
+              trashTasks = s.trashTasks.filter((t) => t.id !== id);
+            } else if (target) {
+              const restoredTask = makeTask({ title: target.title });
+              restoredTask.id = id;
+              tasks = refreshStatuses([restoredTask, ...s.tasks], now);
+            }
+          }
+          return {
+            tasks,
+            completions,
+            trashTasks,
+            reminders: rebuildReminders(tasks, s.settings, now, s.transactions, s.recurringSpends),
+          };
         });
         armScheduler();
+        queueBackup();
       },
 
       snoozeTask: (id, minutes) => {
@@ -768,7 +835,92 @@ export const useApp = create<AppState>()(
       },
 
       deleteTx: (id) => {
-        set((s) => ({ transactions: s.transactions.filter((t) => t.id !== id) }));
+        set((s) => {
+          const gone = s.transactions.find((t) => t.id === id);
+          return {
+            transactions: s.transactions.filter((t) => t.id !== id),
+            trashTx: gone ? [gone, ...s.trashTx].slice(0, 40) : s.trashTx,
+          };
+        });
+        queueBackup();
+      },
+
+      restoreTx: (id) => {
+        set((s) => {
+          const row = s.trashTx.find((t) => t.id === id);
+          if (!row) return s;
+          return {
+            transactions: [row, ...s.transactions],
+            trashTx: s.trashTx.filter((t) => t.id !== id),
+          };
+        });
+        queueBackup();
+      },
+
+      restoreTask: (id) => {
+        const now = Date.now();
+        set((s) => {
+          const row = s.trashTasks.find((t) => t.id === id);
+          if (!row) return s;
+          const tasks = refreshStatuses([{ ...row, status: "scheduled", completedAt: null, updatedAt: now }, ...s.tasks], now);
+          return {
+            tasks,
+            trashTasks: s.trashTasks.filter((t) => t.id !== id),
+            reminders: rebuildReminders(tasks, s.settings, now, s.transactions, s.recurringSpends),
+          };
+        });
+        armScheduler();
+        queueBackup();
+      },
+
+      restoreNote: (id) => {
+        set((s) => {
+          const row = s.trashNotes.find((n) => n.id === id);
+          if (!row) return s;
+          return {
+            notes: [row, ...s.notes],
+            trashNotes: s.trashNotes.filter((n) => n.id !== id),
+          };
+        });
+        queueBackup();
+      },
+
+      restorePlan: (id) => {
+        set((s) => {
+          const row = s.trashPlans.find((p) => p.id === id);
+          if (!row) return s;
+          return {
+            plans: [row, ...s.plans],
+            trashPlans: s.trashPlans.filter((p) => p.id !== id),
+          };
+        });
+        queueBackup();
+      },
+
+      addRecurringSpend: (draft) => {
+        const row: RecurringSpend = { ...draft, id: uid(), lastPostedDay: null };
+        const now = Date.now();
+        set((s) => {
+          const recurringSpends = [row, ...s.recurringSpends];
+          return {
+            recurringSpends,
+            reminders: rebuildReminders(s.tasks, s.settings, now, s.transactions, recurringSpends),
+          };
+        });
+        armScheduler();
+        queueBackup();
+        return row.id;
+      },
+
+      removeRecurringSpend: (id) => {
+        set((s) => ({ recurringSpends: s.recurringSpends.filter((r) => r.id !== id) }));
+        queueBackup();
+      },
+
+      toggleRecurringSpend: (id, on) => {
+        set((s) => ({
+          recurringSpends: s.recurringSpends.map((r) => (r.id === id ? { ...r, enabled: on } : r)),
+        }));
         queueBackup();
       },
 
@@ -801,7 +953,13 @@ export const useApp = create<AppState>()(
         queueBackup();
       },
       deleteNote: (id) => {
-        set((s) => ({ notes: s.notes.filter((n) => n.id !== id) }));
+        set((s) => {
+          const gone = s.notes.find((n) => n.id === id);
+          return {
+            notes: s.notes.filter((n) => n.id !== id),
+            trashNotes: gone ? [gone, ...s.trashNotes].slice(0, 40) : s.trashNotes,
+          };
+        });
         queueBackup();
       },
       addPlan: (draft) => {
@@ -824,7 +982,13 @@ export const useApp = create<AppState>()(
         queueBackup();
       },
       deletePlan: (id) => {
-        set((s) => ({ plans: s.plans.filter((p) => p.id !== id) }));
+        set((s) => {
+          const gone = s.plans.find((p) => p.id === id);
+          return {
+            plans: s.plans.filter((p) => p.id !== id),
+            trashPlans: gone ? [gone, ...s.trashPlans].slice(0, 40) : s.trashPlans,
+          };
+        });
         queueBackup();
       },
       addVaultItem: (draft) => {
@@ -1053,6 +1217,7 @@ export const useApp = create<AppState>()(
         const FRESH_MS = 45_000;
         for (const rem of due) {
           const fresh = now - rem.triggerAt < FRESH_MS;
+          if (rem.taskId.startsWith("recurring-")) continue;
           if (rem.taskId === "paisa" || rem.type === "paisa") {
             if (s.transactions.some((tx) => dayKey(tx.at) === today)) continue;
             if (settings.lastPaisaNudgeOn === today) continue;
@@ -1121,9 +1286,39 @@ export const useApp = create<AppState>()(
         }
 
         tasks = refreshStatuses(tasks, now);
+        const nowMin = new Date(now).getHours() * 60 + new Date(now).getMinutes();
+        const dow = new Date(now).getDay();
+        const posted: Transaction[] = [];
+        const recurringSpends = s.recurringSpends.map((row) => {
+          if (!row.enabled) return row;
+          if (row.lastPostedDay === today) return row;
+          if (row.days.length && !row.days.includes(dow)) return row;
+          if (nowMin < row.hour * 60 + row.minute) return row;
+          posted.push({
+            id: uid(),
+            type: row.type,
+            amount: row.amount,
+            category: row.category,
+            note: row.note,
+            at: now,
+            account: "cash",
+          });
+          return { ...row, lastPostedDay: today };
+        });
+        const transactions = posted.length ? [...posted, ...s.transactions] : s.transactions;
+        if (posted.length && settings.notificationsEnabled) {
+          const first = posted[0];
+          notifySummary(
+            first.note || (first.type === "expense" ? "Daily spend" : "Daily in"),
+            `${first.type === "expense" ? "−" : "+"}₹${Math.round(first.amount)}`,
+            settings,
+          );
+        }
         set({
           tasks,
-          reminders: rebuildReminders(tasks, settings, now, s.transactions),
+          transactions,
+          recurringSpends,
+          reminders: rebuildReminders(tasks, settings, now, transactions, recurringSpends),
           settings,
           activeReminderTaskId,
           summaryBanner,
@@ -1190,6 +1385,11 @@ export const useApp = create<AppState>()(
           notes: data.notes ?? [],
           plans: data.plans ?? [],
           vault: data.vault ?? [],
+          recurringSpends: data.recurringSpends ?? [],
+          trashTasks: data.trashTasks ?? [],
+          trashTx: data.trashTx ?? [],
+          trashNotes: data.trashNotes ?? [],
+          trashPlans: data.trashPlans ?? [],
           vaultUnlocked: true,
         });
         armScheduler();
@@ -1214,7 +1414,7 @@ export const useApp = create<AppState>()(
           settings: {
             ...DEFAULT_SETTINGS,
             seededOnce: true,
-            demoRev: 19,
+            demoRev: 20,
             notifyRev: 19,
             notificationsEnabled: true,
             theme: get().settings.theme,
@@ -1227,8 +1427,42 @@ export const useApp = create<AppState>()(
           activeReminderTaskId: null,
           lastFinish: null,
           summaryBanner: null,
+          recurringSpends: [],
+          trashTasks: [],
+          trashTx: [],
+          trashNotes: [],
+          trashPlans: [],
         });
         armScheduler();
+      },
+
+      clearDemo: () => {
+        const DEMO_TITLES = new Set([
+          "Pay electricity bill",
+          "Call client",
+          "Study Python",
+          "Submit report",
+          "Morning walk",
+          "Water plants",
+        ]);
+        const DEMO_NOTES = new Set(["Salary", "Lunch", "Metro", "Wifi"]);
+        const now = Date.now();
+        set((s) => {
+          const tasks = s.tasks.filter((t) => !DEMO_TITLES.has(t.title) && t.id !== "seed-water");
+          const transactions = isDemoBudgets(s.budgets)
+            ? s.transactions.filter((tx) => !DEMO_NOTES.has(tx.note))
+            : s.transactions.filter((tx) => !DEMO_NOTES.has(tx.note) || s.transactions.length > 8);
+          return {
+            tasks,
+            completions: s.completions.filter((c) => !DEMO_TITLES.has(c.title)),
+            transactions,
+            budgets: isDemoBudgets(s.budgets) ? [] : s.budgets,
+            reminders: rebuildReminders(tasks, s.settings, now, transactions),
+            settings: { ...s.settings, demoRev: 19, seededOnce: true },
+          };
+        });
+        armScheduler();
+        queueBackup();
       },
     }),
     {
@@ -1274,6 +1508,11 @@ export const useApp = create<AppState>()(
         notes: s.notes,
         plans: s.plans,
         vault: s.vault,
+        recurringSpends: s.recurringSpends,
+        trashTasks: s.trashTasks,
+        trashTx: s.trashTx,
+        trashNotes: s.trashNotes,
+        trashPlans: s.trashPlans,
         focus: s.focus.running
           ? s.focus
           : { ...s.focus, running: false, endsAt: null },
@@ -1318,7 +1557,7 @@ export const useApp = create<AppState>()(
           transactions: wipeDemo ? [] : (p.transactions ?? current.transactions),
           categories: p.categories?.length ? p.categories : current.categories?.length ? current.categories : DEFAULT_CATEGORIES,
           settings: mergedSettings,
-          budgets: p.budgets?.length ? p.budgets : current.budgets,
+          budgets: wipeDemo || isDemoBudgets(p.budgets ?? []) ? [] : p.budgets?.length ? p.budgets : current.budgets,
           moneyCategories: ensureIncomeCats(
             p.moneyCategories?.length
               ? p.moneyCategories
@@ -1329,6 +1568,11 @@ export const useApp = create<AppState>()(
           notes: p.notes ?? current.notes ?? [],
           plans: p.plans ?? current.plans ?? [],
           vault: p.vault ?? current.vault ?? [],
+          recurringSpends: p.recurringSpends ?? current.recurringSpends ?? [],
+          trashTasks: p.trashTasks ?? current.trashTasks ?? [],
+          trashTx: p.trashTx ?? current.trashTx ?? [],
+          trashNotes: p.trashNotes ?? current.trashNotes ?? [],
+          trashPlans: p.trashPlans ?? current.trashPlans ?? [],
           vaultUnlocked: true,
           game: wipeDemo
             ? { ...DEFAULT_GAME }
@@ -1449,14 +1693,15 @@ function effectiveDueSafe(task: Task): number | null {
 
 export function selectStats(tasks: Task[], completions: Completion[], now: number) {
   const today = dayKey(now);
-  const completedToday = completions.filter((c) => dayKey(c.completedAt) === today).length;
+  const live = completions.filter((c) => !c.undoneAt);
+  const completedToday = live.filter((c) => dayKey(c.completedAt) === today).length;
   const weekAgo = now - 6 * 24 * 60 * 60_000;
-  const completedWeek = completions.filter((c) => c.completedAt >= weekAgo).length;
+  const completedWeek = live.filter((c) => c.completedAt >= weekAgo).length;
   const overdue = tasks.filter((t) => t.status !== "completed" && liveStatus(t, now) === "overdue").length;
   const open = tasks.filter((t) => t.status !== "completed").length;
-  const denom = completions.length + open;
-  const rate = denom === 0 ? 100 : Math.round((completions.length / denom) * 100);
-  const days = new Set(completions.map((c) => dayKey(c.completedAt)));
+  const denom = live.length + open;
+  const rate = denom === 0 ? 100 : Math.round((live.length / denom) * 100);
+  const days = new Set(live.map((c) => dayKey(c.completedAt)));
   let streak = 0;
   for (let i = 0; i < 60; i++) {
     const key = dayKey(now - i * 24 * 60 * 60_000);
@@ -1472,6 +1717,7 @@ export function selectStats(tasks: Task[], completions: Completion[], now: numbe
 export function selectCompletionsByDay(completions: Completion[], now: number) {
   const map = new Map<string, Completion[]>();
   for (const item of completions) {
+    if (item.undoneAt) continue;
     const key = dayKey(item.completedAt);
     const list = map.get(key) ?? [];
     list.push(item);

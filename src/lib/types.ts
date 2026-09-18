@@ -74,6 +74,8 @@ export interface Completion {
   title: string;
   completedAt: number;
   duration: number | null;
+  /** Set when the user undoes — stays in history, leaves the Done tab. */
+  undoneAt?: number | null;
 }
 
 export interface FinishEvent {
@@ -168,6 +170,11 @@ export interface BackupFile {
   notes?: Note[];
   plans?: Plan[];
   vault?: VaultItem[];
+  recurringSpends?: RecurringSpend[];
+  trashTasks?: Task[];
+  trashTx?: Transaction[];
+  trashNotes?: Note[];
+  trashPlans?: Plan[];
 }
 
 export type TxType = "income" | "expense";
@@ -187,6 +194,20 @@ export interface Transaction {
   note: string;
   at: number;
   account: "cash" | "bank";
+}
+
+export interface RecurringSpend {
+  id: string;
+  type: TxType;
+  amount: number;
+  category: string;
+  note: string;
+  hour: number;
+  minute: number;
+  /** empty = every day */
+  days: number[];
+  lastPostedDay: string | null;
+  enabled: boolean;
 }
 
 export type NoteColor = "paper" | "teal" | "sand" | "rose";

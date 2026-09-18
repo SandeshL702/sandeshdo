@@ -13,6 +13,7 @@ import type {
   Task,
   Transaction,
   VaultItem,
+  RecurringSpend,
 } from "./types";
 
 export interface Snapshot {
@@ -29,6 +30,11 @@ export interface Snapshot {
   notes?: Note[];
   plans?: Plan[];
   vault?: VaultItem[];
+  recurringSpends?: RecurringSpend[];
+  trashTasks?: Task[];
+  trashTx?: Transaction[];
+  trashNotes?: Note[];
+  trashPlans?: Plan[];
 }
 
 const FILE_KEY = "sandeshdo-file-backup";
@@ -50,7 +56,11 @@ export function buildBackup(snap: Snapshot): BackupFile {
     game: snap.game,
     notes: snap.notes ?? [],
     plans: snap.plans ?? [],
-    vault: (snap.vault ?? []).map((item) => ({ ...item, secret: "" })),
+    recurringSpends: snap.recurringSpends ?? [],
+    trashTasks: snap.trashTasks ?? [],
+    trashTx: snap.trashTx ?? [],
+    trashNotes: snap.trashNotes ?? [],
+    trashPlans: snap.trashPlans ?? [],
   };
 }
 
@@ -59,13 +69,20 @@ export function serializeBackup(snap: Snapshot): string {
 }
 
 export function parseBackup(raw: string): BackupFile {
-  const data = JSON.parse(raw) as BackupFile;
-  if (!data || data.app !== "SandeshDo" || (data.version !== 1 && data.version !== 2)) {
+  const text = raw.replace(/^\uFEFF/, "").trim();
+  let json = text;
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start >= 0 && end > start) json = text.slice(start, end + 1);
+  let data: BackupFile;
+  try {
+    data = JSON.parse(json) as BackupFile;
+  } catch {
     throw new Error("This file is not a SandeshDo backup.");
   }
-  if (!Array.isArray(data.tasks) || !data.settings) {
-    throw new Error("Backup is missing required data.");
-  }
+  if (!data || typeof data !== "object") throw new Error("This file is not a SandeshDo backup.");
+  if (data.app && data.app !== "SandeshDo") throw new Error("This file is not a SandeshDo backup.");
+  if (!Array.isArray(data.tasks)) throw new Error("Backup is missing tasks.");
   return data;
 }
 

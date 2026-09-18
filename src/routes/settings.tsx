@@ -3,12 +3,9 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { Button, FieldLabel, Input, Switch } from "@/components/ui";
-import { parseBackup, persistBackup, serializeBackup, shareBackup } from "@/lib/backup";
+import { downloadExcel } from "@/lib/export-report";
+import { parseBackup, persistBackup, serializeBackup, shareBackup, tryNativeRestore } from "@/lib/backup";
 import { testGeminiKey } from "@/lib/assistant";
-import { pullCloudBackup, pushCloudBackup } from "@/lib/cloud-backup";
-import { authEnabled, signIn } from "@/lib/auth/client";
-import { UserButton } from "@/lib/auth/gates";
-import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { ensureNotificationPermission, playGentleTone, readNativeHealth, sendTestPopup } from "@/lib/notifications";
 import { selectStats, useApp } from "@/lib/store";
 import { useT } from "@/lib/i18n";
@@ -44,6 +41,15 @@ export function SettingsPage() {
   const deleteMoneyCategory = useApp((s) => s.deleteMoneyCategory);
   const importAll = useApp((s) => s.importAll);
   const resetDemo = useApp((s) => s.resetDemo);
+  const clearDemo = useApp((s) => s.clearDemo);
+  const restoreTask = useApp((s) => s.restoreTask);
+  const restoreTx = useApp((s) => s.restoreTx);
+  const restoreNote = useApp((s) => s.restoreNote);
+  const restorePlan = useApp((s) => s.restorePlan);
+  const trashTasks = useApp((s) => s.trashTasks);
+  const trashTx = useApp((s) => s.trashTx);
+  const trashNotes = useApp((s) => s.trashNotes);
+  const trashPlans = useApp((s) => s.trashPlans);
   const fileRef = useRef<HTMLInputElement>(null);
   const [catName, setCatName] = useState("");
   const [paisaName, setPaisaName] = useState("");
@@ -60,9 +66,31 @@ export function SettingsPage() {
     refresh();
     window.addEventListener("sandeshdo:native-resume", refresh);
     window.addEventListener("focus", refresh);
+    const pick = () => fileRef.current?.click();
+    const fromNative = (ev: Event) => {
+      const detail = (ev as CustomEvent<string>).detail;
+      const raw = typeof detail === "string" && detail.length > 8 ? detail : null;
+      try {
+        const data = raw ? parseBackup(raw) : tryNativeRestore();
+        if (!data) {
+          toast(t("backup.bad"));
+          return;
+        }
+        importAll(data);
+        toast(t("backup.restored"));
+      } catch (err) {
+        toast(err instanceof Error ? err.message : t("backup.bad"));
+      }
+    };
+    window.addEventListener("sandeshdo:pick-restore", pick);
+    window.addEventListener("sandeshdo:restore-json", fromNative);
+    window.addEventListener("sandeshdo:restore-native", fromNative);
     return () => {
       window.removeEventListener("sandeshdo:native-resume", refresh);
       window.removeEventListener("focus", refresh);
+      window.removeEventListener("sandeshdo:pick-restore", pick);
+      window.removeEventListener("sandeshdo:restore-json", fromNative);
+      window.removeEventListener("sandeshdo:restore-native", fromNative);
     };
   }, []);
 
@@ -110,18 +138,19 @@ export function SettingsPage() {
         </ol>
       </Section>
 
-      <a
-        href="/SandeshDo.apk"
-        download="SandeshDo.apk"
-        className="mt-5 flex items-center justify-between gap-3 rounded-[1.5rem] bg-fg px-5 py-4 text-bg shadow-[var(--sd-card-shadow)] active:scale-[0.99]"
-      >
-        <span>
-          <span className="block text-[10px] font-semibold tracking-[0.16em] uppercase opacity-70">Android</span>
-          <span className="mt-1 block font-display text-xl font-medium leading-tight">{t("settings.apk")}</span>
-          <span className="mt-1 block text-xs opacity-75">{t("settings.apkHint")}</span>
-        </span>
-        <span className="shrink-0 rounded-full bg-bg px-3 py-2 text-xs font-semibold text-fg">{t("settings.apkGet")}</span>
-      </a>
+      {typeof window !== "undefined" && !window.SandeshDoHost ? (
+        <a
+          href="https://github.com/SandeshL702/sandeshdo/releases/latest/download/SandeshDo.apk"
+          className="mt-5 flex items-center justify-between gap-3 rounded-[1.5rem] bg-fg px-5 py-4 text-bg shadow-[var(--sd-card-shadow)] active:scale-[0.99]"
+        >
+          <span>
+            <span className="block text-[10px] font-semibold tracking-[0.16em] uppercase opacity-70">Android</span>
+            <span className="mt-1 block font-display text-xl font-medium leading-tight">{t("settings.apk")}</span>
+            <span className="mt-1 block text-xs opacity-75">{t("settings.apkHint")}</span>
+          </span>
+          <span className="shrink-0 rounded-full bg-bg px-3 py-2 text-xs font-semibold text-fg">{t("settings.apkGet")}</span>
+        </a>
+      ) : null}
 
       <Section title={t("settings.thisWeek")}>
         <WeekRecap />
@@ -639,7 +668,7 @@ export function SettingsPage() {
         <input
           ref={fileRef}
           type="file"
-          accept="application/json"
+          accept=".json,.txt,application/json,text/plain,*/*"
           className="hidden"
           onChange={async (e) => {
             const file = e.target.files?.[0];
@@ -654,10 +683,71 @@ export function SettingsPage() {
             e.target.value = "";
           }}
         />
+        <Button
+          className="mt-2 w-full"
+          variant="secondary"
+          onClick={() => {
+            downloadExcel(useApp.getState());
+            toast(t("settings.excelOk"));
+          }}
+        >
+          {t("settings.excel")}
+        </Button>
+        <Link
+          to="/export"
+          className="mt-2 flex h-11 w-full items-center justify-center rounded-2xl bg-bg text-sm font-semibold"
+        >
+          {t("settings.pdf")}
+        </Link>
+        <Button className="mt-2 w-full" variant="ghost" onClick={clearDemo}>
+          {t("settings.clearDemo")}
+        </Button>
         <Button className="mt-2 w-full" variant="ghost" onClick={resetDemo}>
           {t("settings.demo")}
         </Button>
       </Section>
+
+      {(trashTasks.length > 0 || trashTx.length > 0 || trashNotes.length > 0 || trashPlans.length > 0) && (
+        <Section title={t("settings.trash")}>
+          <p className="mb-3 text-sm text-muted">{t("settings.trashHint")}</p>
+          <div className="space-y-2">
+            {trashTasks.map((row) => (
+              <div key={row.id} className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-sm">{row.title}</span>
+                <Button size="sm" variant="secondary" onClick={() => restoreTask(row.id)}>
+                  {t("settings.putBack")}
+                </Button>
+              </div>
+            ))}
+            {trashTx.map((row) => (
+              <div key={row.id} className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-sm">
+                  ₹{Math.round(row.amount)} · {row.note}
+                </span>
+                <Button size="sm" variant="secondary" onClick={() => restoreTx(row.id)}>
+                  {t("settings.putBack")}
+                </Button>
+              </div>
+            ))}
+            {trashNotes.map((row) => (
+              <div key={row.id} className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-sm">{row.title}</span>
+                <Button size="sm" variant="secondary" onClick={() => restoreNote(row.id)}>
+                  {t("settings.putBack")}
+                </Button>
+              </div>
+            ))}
+            {trashPlans.map((row) => (
+              <div key={row.id} className="flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate text-sm">{row.title}</span>
+                <Button size="sm" variant="secondary" onClick={() => restorePlan(row.id)}>
+                  {t("settings.putBack")}
+                </Button>
+              </div>
+            ))}
+          </div>
+        </Section>
+      )}
 
       <div className="mt-10 pb-4 text-center">
         <div className="text-sm font-semibold tracking-tight">SandeshDo</div>
@@ -693,69 +783,52 @@ function WeekRecap() {
 
 function GoogleBackupCard() {
   const { t } = useT();
-  const { user, isPending } = useCurrentUserState();
   const importAll = useApp((s) => s.importAll);
   const patchSettings = useApp((s) => s.patchSettings);
-  const [busy, setBusy] = useState(false);
-
-  const syncUp = async () => {
-    setBusy(true);
-    try {
-      const payload = serializeBackup(useApp.getState());
-      const res = await pushCloudBackup({ data: { payload } });
-      if (res.ok) {
-        patchSettings({ lastBackupAt: Date.now(), lastBackupDay: new Date().toISOString().slice(0, 10) });
-        toast(t("backup.cloudSaved"));
-      } else toast(t("backup.failed"));
-    } catch {
-      toast(t("backup.failed"));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const syncDown = async () => {
-    setBusy(true);
-    try {
-      const res = await pullCloudBackup();
-      if (!res.payload) {
-        toast(t("backup.cloudEmpty"));
-        return;
-      }
-      importAll(parseBackup(res.payload));
-      toast(t("backup.restored"));
-    } catch {
-      toast(t("backup.bad"));
-    } finally {
-      setBusy(false);
-    }
-  };
+  const native = typeof window !== "undefined" && Boolean(window.SandeshDoHost);
 
   return (
     <>
       <p className="mb-3 text-sm text-muted">{t("settings.googleHint")}</p>
-      {isPending ? (
-        <div className="h-11 w-full animate-pulse rounded-2xl bg-bg" />
-      ) : user ? (
-        <>
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <span className="min-w-0 truncate text-sm font-semibold">{user.displayName || user.primaryEmail || "Google"}</span>
-            <UserButton />
-          </div>
-          <Button className="w-full" disabled={busy} onClick={() => void syncUp()}>
-            {t("settings.googleSave")}
-          </Button>
-          <Button className="mt-2 w-full" variant="secondary" disabled={busy} onClick={() => void syncDown()}>
-            {t("settings.googleRestore")}
-          </Button>
-        </>
-      ) : authEnabled ? (
-        <Button className="w-full" onClick={() => signIn("grok-google", { callbackURL: "/settings" })}>
-          {t("settings.googleConnect")}
-        </Button>
-      ) : (
-        <p className="text-sm text-muted">{t("settings.googlePhone")}</p>
-      )}
+      {native ? <p className="mb-3 text-sm text-muted">{t("settings.googlePhone")}</p> : null}
+      <Button
+        className="w-full"
+        onClick={async () => {
+          const json = serializeBackup(useApp.getState());
+          const host = window.SandeshDoHost;
+          if (host?.saveToDrive) {
+            host.saveToDrive(json);
+            patchSettings({ lastBackupDay: new Date().toISOString().slice(0, 10), lastBackupAt: Date.now() });
+            toast(t("backup.shared"));
+            return;
+          }
+          const how = await shareBackup(json);
+          patchSettings({ lastBackupDay: new Date().toISOString().slice(0, 10), lastBackupAt: Date.now() });
+          toast(how === "download" ? t("backup.saved") : t("backup.shared"));
+        }}
+      >
+        {t("settings.googleSave")}
+      </Button>
+      <Button
+        className="mt-2 w-full"
+        variant="secondary"
+        onClick={() => {
+          const host = window.SandeshDoHost;
+          if (host?.pickRestore) {
+            host.pickRestore();
+            return;
+          }
+          const nativeFile = tryNativeRestore();
+          if (nativeFile) {
+            importAll(nativeFile);
+            toast(t("backup.restored"));
+            return;
+          }
+          window.dispatchEvent(new Event("sandeshdo:pick-restore"));
+        }}
+      >
+        {t("settings.googleRestore")}
+      </Button>
       <p className="mt-3 text-xs text-subtle">{t("settings.vaultSecure")}</p>
     </>
   );

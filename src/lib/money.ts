@@ -13,14 +13,15 @@ export const DEFAULT_MONEY_CATEGORIES: MoneyCategory[] = [
   { id: "other", name: "Other", kind: "both" },
 ];
 
-export const DEFAULT_BUDGETS: Budget[] = [
-  { category: "food", limit: 8000 },
-  { category: "bills", limit: 12000 },
-  { category: "travel", limit: 3000 },
-  { category: "shopping", limit: 4000 },
-  { category: "fun", limit: 2000 },
-  { category: "health", limit: 2000 },
-];
+export const DEFAULT_BUDGETS: Budget[] = [];
+
+export function isDemoBudgets(budgets: Budget[]): boolean {
+  if (!budgets.length) return false;
+  const map = Object.fromEntries(budgets.map((b) => [b.category, b.limit]));
+  if (map.food !== 8000 || map.bills !== 12000 || map.travel !== 3000) return false;
+  const extras = budgets.filter((b) => !["food", "bills", "travel", "shopping", "health", "fun"].includes(b.category));
+  return extras.length === 0;
+}
 
 const NOTE_TO_CAT: Array<{ re: RegExp; id: string }> = [
   { re: /\b(lunch|dinner|breakfast|food|chai|coffee|swiggy|zomato|snack|khana|pizza|biryani)\b/i, id: "food" },

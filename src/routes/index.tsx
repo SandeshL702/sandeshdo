@@ -141,13 +141,12 @@ function TodayPage() {
                   </p>
                   <div className="space-y-1.5">
                     {group.items.map((item) => {
-                      const task = tasks.find((row) => row.id === item.taskId);
                       return (
                         <CompletedRow
                           key={item.id}
                           item={item}
-                          task={task}
-                          onReopen={task && task.status === "completed" ? () => reopenTask(task.id) : undefined}
+                          task={tasks.find((row) => row.id === item.taskId)}
+                          onReopen={() => reopenTask(item.taskId, item.id)}
                         />
                       );
                     })}

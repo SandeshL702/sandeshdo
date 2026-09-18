@@ -1,4 +1,4 @@
-import type { Reminder, ReminderInterval, Settings, Task, Transaction } from "./types";
+import type { RecurringSpend, Reminder, ReminderInterval, Settings, Task, Transaction } from "./types";
 import { dayKey, isInQuietHours, nextQuietHoursEnd } from "./time";
 import { uid } from "./utils";
 
@@ -66,6 +66,7 @@ export function rebuildReminders(
   settings: Settings,
   now: number,
   transactions: Pick<Transaction, "at">[] = [],
+  recurringSpends: RecurringSpend[] = [],
 ): Reminder[] {
   const reminders: Reminder[] = [];
   for (const task of tasks) {
@@ -87,6 +88,24 @@ export function rebuildReminders(
   }
   const paisa = buildPaisaReminder(settings, transactions, now);
   if (paisa) reminders.push(paisa);
+  const today = dayKey(now);
+  const dow = new Date(now).getDay();
+  for (const row of recurringSpends) {
+    if (!row.enabled) continue;
+    if (row.lastPostedDay === today) continue;
+    if (row.days.length && !row.days.includes(dow)) continue;
+    const at = new Date(now);
+    at.setHours(row.hour, row.minute, 0, 0);
+    let triggerAt = at.getTime();
+    if (triggerAt <= now) triggerAt = now + 8_000;
+    reminders.push({
+      id: `recurring-${row.id}-${today}`,
+      taskId: `recurring-${row.id}`,
+      triggerAt,
+      type: "paisa",
+      status: "pending",
+    });
+  }
   return reminders.sort((a, b) => a.triggerAt - b.triggerAt);
 }
 

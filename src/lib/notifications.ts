@@ -32,6 +32,8 @@ declare global {
       saveBackup?: (json: string) => string;
       loadLatestBackup?: () => string;
       shareBackup?: (json: string) => void;
+      saveToDrive?: (json: string) => void;
+      pickRestore?: () => void;
     };
   }
 }

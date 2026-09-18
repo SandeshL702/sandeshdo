@@ -17,6 +17,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.view.Window;
 import android.webkit.PermissionRequest;
+import android.content.Intent;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -81,7 +82,7 @@ public class MainActivity extends AppCompatActivity {
         AlarmScheduler.scheduleSaved(this);
 
         webView = new WebView(this);
-        webView.setBackgroundColor(Color.parseColor("#EFE8DC"));
+        webView.setBackgroundColor(Color.parseColor("#0B6B58"));
         webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
         root = new FrameLayout(this);
         root.addView(
@@ -140,7 +141,7 @@ public class MainActivity extends AppCompatActivity {
             bootFromAssets();
         }
         handleOpenTask(getIntent());
-        new Handler(Looper.getMainLooper()).postDelayed(this::hideSplash, 1400);
+        new Handler(Looper.getMainLooper()).postDelayed(this::hideSplash, 2200);
 
                         getOnBackPressedDispatcher()
                                 .addCallback(
@@ -221,31 +222,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private View buildSplash() {
-        FrameLayout splash = new FrameLayout(this);
-        splash.setBackgroundColor(Color.parseColor("#0B6B58"));
-        splash.setClickable(true);
-        LinearLayout col = new LinearLayout(this);
-        col.setOrientation(LinearLayout.VERTICAL);
-        col.setGravity(Gravity.CENTER);
-        TextView title = new TextView(this);
-        title.setText("SandeshDo");
-        title.setTextColor(Color.parseColor("#F6F3EC"));
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 34);
-        title.setTypeface(Typeface.create("serif", Typeface.NORMAL));
-        title.setGravity(Gravity.CENTER);
-        TextView tag = new TextView(this);
-        tag.setText("Remember · Do · Finish");
-        tag.setTextColor(Color.parseColor("#C9EDE4"));
-        tag.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
-        tag.setGravity(Gravity.CENTER);
-        tag.setPadding(0, 16, 0, 0);
-        col.addView(title);
-        col.addView(tag);
-        FrameLayout.LayoutParams lp =
-                new FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
-        splash.addView(col, lp);
-        return splash;
+        return new TickSplashView(this);
     }
 
     public void hideSplash() {
@@ -372,6 +349,74 @@ public class MainActivity extends AppCompatActivity {
         super.onSaveInstanceState(outState);
         if (webView != null) {
             webView.saveState(outState);
+        }
+    }
+
+    private String pendingBackupJson = "";
+    static final int REQ_CREATE = 41;
+    static final int REQ_OPEN = 42;
+
+    public void startCreateBackup(String json) {
+        pendingBackupJson = json == null ? "" : json;
+        try {
+            Intent i = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            i.addCategory(Intent.CATEGORY_OPENABLE);
+            i.setType("application/json");
+            i.putExtra(Intent.EXTRA_TITLE, "sandeshdo-backup.json");
+            startActivityForResult(i, REQ_CREATE);
+        } catch (Exception e) {
+            if (webView != null) {
+                new HostBridge(this).shareBackup(pendingBackupJson);
+            }
+        }
+    }
+
+    public void startPickRestore() {
+        try {
+            Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            i.addCategory(Intent.CATEGORY_OPENABLE);
+            i.setType("*/*");
+            startActivityForResult(i, REQ_OPEN);
+        } catch (Exception ignored) {
+        }
+    }
+
+    @Override
+    @SuppressWarnings("deprecation")
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (resultCode != RESULT_OK || data == null || data.getData() == null) return;
+        Uri uri = data.getData();
+        if (requestCode == REQ_CREATE) {
+            try {
+                java.io.OutputStream os = getContentResolver().openOutputStream(uri, "wt");
+                if (os == null) os = getContentResolver().openOutputStream(uri);
+                if (os != null) {
+                    os.write(pendingBackupJson.getBytes(StandardCharsets.UTF_8));
+                    os.close();
+                }
+            } catch (Exception ignored) {
+            }
+            return;
+        }
+        if (requestCode == REQ_OPEN) {
+            try {
+                InputStream in = getContentResolver().openInputStream(uri);
+                if (in == null) return;
+                ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                byte[] buf = new byte[4096];
+                int n;
+                while ((n = in.read(buf)) > 0) bos.write(buf, 0, n);
+                in.close();
+                String json = bos.toString("UTF-8");
+                new HostBridge(this).saveBackup(json);
+                if (webView != null) {
+                    webView.evaluateJavascript(
+                            "(function(){window.dispatchEvent(new Event('sandeshdo:restore-native'));})();",
+                            null);
+                }
+            } catch (Exception ignored) {
+            }
         }
     }
 

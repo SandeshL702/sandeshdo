@@ -12,7 +12,7 @@ export function CompletedRow({
   onReopen?: () => void;
 }) {
   const { t } = useT();
-  const canReopen = Boolean(task && task.status === "completed" && onReopen);
+  const canReopen = Boolean(onReopen);
   return (
     <div className="flex items-center gap-3 rounded-2xl bg-surface px-3 py-3 shadow-[var(--sd-card-shadow)]">
       <div className="min-w-0 flex-1">

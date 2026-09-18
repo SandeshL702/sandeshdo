@@ -573,3 +573,15 @@ html.sd-splash-done #sd-boot-splash {
     cursor: pointer;
   }
 }
+
+@media print {
+  nav,
+  .sd-dock,
+  #sd-boot-splash {
+    display: none !important;
+  }
+  body {
+    background: #fff !important;
+    color: #111 !important;
+  }
+}

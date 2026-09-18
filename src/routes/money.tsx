@@ -1,9 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { format, isToday, isYesterday } from "date-fns";
 import { Button, Input, SectionLabel } from "@/components/ui";
 import { useApp } from "@/lib/store";
-import { budgetLeft, formatInr, moneyCatLabel, monthKey, spendByDay } from "@/lib/money";
+import { budgetLeft, formatInr, isDemoBudgets, moneyCatLabel, monthKey, spendByDay } from "@/lib/money";
 import { groupTxByDay } from "@/lib/diary";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -19,6 +19,9 @@ export function MoneyPage() {
   const moneyCategories = useApp((s) => s.moneyCategories);
   const deleteTx = useApp((s) => s.deleteTx);
   const setBudget = useApp((s) => s.setBudget);
+  const recurringSpends = useApp((s) => s.recurringSpends);
+  const removeRecurringSpend = useApp((s) => s.removeRecurringSpend);
+  const toggleRecurringSpend = useApp((s) => s.toggleRecurringSpend);
   const month = monthKey();
   const stats = useMemo(() => budgetLeft(transactions, budgets, month), [transactions, budgets, month]);
   const [editing, setEditing] = useState<string | null>(null);
@@ -29,6 +32,10 @@ export function MoneyPage() {
   const daily = useMemo(() => spendByDay(transactions, 14), [transactions]);
   const maxSpend = Math.max(1, ...daily.map((d) => d.spent));
   const todayRow = daily[daily.length - 1];
+
+  useEffect(() => {
+    if (isDemoBudgets(budgets)) useApp.setState({ budgets: [] });
+  }, [budgets]);
 
 
   const dayLabel = (key: string) => {
@@ -51,7 +58,7 @@ export function MoneyPage() {
 
       <section className="mt-6 overflow-hidden rounded-[1.75rem] bg-fg px-5 py-6 text-bg shadow-[var(--sd-dock-shadow)]">
         <p className="text-[11px] font-semibold tracking-[0.16em] uppercase opacity-70">
-          {remaining >= 0 ? t("money.left") : t("money.over")}
+          {stats.cap > 0 ? (remaining >= 0 ? t("money.left") : t("money.over")) : t("money.net")}
         </p>
         <div className="font-display mt-2 text-5xl leading-none font-medium tracking-tight tabular-nums">
           {formatInr(remaining)}
@@ -98,6 +105,31 @@ export function MoneyPage() {
           <span className="font-display text-2xl font-medium">{t("money.gaya")}</span>
         </button>
       </div>
+
+      {recurringSpends.length > 0 && (
+        <section className="mt-6">
+          <SectionLabel>{t("money.repeatList")}</SectionLabel>
+          <div className="space-y-2">
+            {recurringSpends.map((row) => (
+              <div key={row.id} className="sd-card flex items-center gap-3 rounded-2xl px-4 py-3">
+                <button type="button" className="min-w-0 flex-1 text-left" onClick={() => toggleRecurringSpend(row.id, !row.enabled)}>
+                  <p className="text-sm font-semibold">
+                    {row.type === "expense" ? "−" : "+"}
+                    {formatInr(row.amount)} · {row.note}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted">
+                    {t("money.everyDay")} · {String(row.hour).padStart(2, "0")}:{String(row.minute).padStart(2, "0")}
+                    {row.enabled ? "" : ` · ${t("money.repeatOff")}`}
+                  </p>
+                </button>
+                <button type="button" className="text-xs font-semibold text-muted" onClick={() => removeRecurringSpend(row.id)}>
+                  {t("settings.remove")}
+                </button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="mt-6">
         <SectionLabel>{t("money.daily")}</SectionLabel>

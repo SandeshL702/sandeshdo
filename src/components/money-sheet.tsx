@@ -22,11 +22,14 @@ export function MoneySheet({
 }) {
   const { t } = useT();
   const addTx = useApp((s) => s.addTx);
+  const addRecurringSpend = useApp((s) => s.addRecurringSpend);
   const moneyCategories = useApp((s) => s.moneyCategories);
   const [type, setType] = useState<TxType>("expense");
   const [digits, setDigits] = useState("");
   const [note, setNote] = useState("");
   const [category, setCategory] = useState("food");
+  const [repeat, setRepeat] = useState(false);
+  const [repeatAt, setRepeatAt] = useState("20:00");
 
   const cats = catsForType(moneyCategories, type);
 
@@ -35,6 +38,9 @@ export function MoneySheet({
     setType(initialType);
     setDigits(initialAmount.replace(/[^\d.]/g, ""));
     setNote("");
+    setRepeat(false);
+    const n = new Date();
+    setRepeatAt(`${String(n.getHours()).padStart(2, "0")}:${String(n.getMinutes()).padStart(2, "0")}`);
     const pool = catsForType(moneyCategories, initialType);
     const preferred =
       pool.find((c) => c.id === (initialType === "income" ? "salary" : "food")) ?? pool[0];
@@ -58,14 +64,29 @@ export function MoneySheet({
       return;
     }
     const trimmed = note.trim();
+    const cat = trimmed ? guessCategory(trimmed, type, moneyCategories) || category : category;
+    const label = trimmed || t(type === "income" ? "money.got" : "money.spent");
     addTx({
       type,
       amount,
-      category: trimmed ? guessCategory(trimmed, type, moneyCategories) || category : category,
-      note: trimmed || t(type === "income" ? "money.got" : "money.spent"),
+      category: cat,
+      note: label,
       at: Date.now(),
       account: "cash",
     });
+    if (repeat) {
+      const [hh, mm] = repeatAt.split(":").map(Number);
+      addRecurringSpend({
+        type,
+        amount,
+        category: cat,
+        note: label,
+        hour: Number.isFinite(hh) ? hh : new Date().getHours(),
+        minute: Number.isFinite(mm) ? mm : new Date().getMinutes(),
+        days: [],
+        enabled: true,
+      });
+    }
     toast(type === "income" ? t("money.loggedIn", { n: formatInr(amount) }) : t("money.loggedOut", { n: formatInr(amount) }));
     onClose();
   };
@@ -159,6 +180,29 @@ export function MoneySheet({
           </button>
         ))}
       </div>
+
+      <button
+        type="button"
+        onClick={() => setRepeat((v) => !v)}
+        className={cn(
+          "mt-4 flex h-12 w-full items-center justify-between rounded-2xl px-4 text-sm font-semibold",
+          repeat ? "bg-fg text-bg" : "bg-bg text-muted shadow-[var(--sd-card-shadow)]",
+        )}
+      >
+        <span>{t("money.repeatDaily")}</span>
+        <span className="text-xs opacity-70">{repeat ? t("money.repeatOn") : t("money.repeatOff")}</span>
+      </button>
+      {repeat ? (
+        <label className="mt-2 flex items-center justify-between gap-3 rounded-2xl bg-bg px-4 py-3 text-sm shadow-[var(--sd-card-shadow)]">
+          <span className="font-semibold">{t("money.repeatAt")}</span>
+          <Input
+            type="time"
+            className="h-10 w-32"
+            value={repeatAt}
+            onChange={(e) => setRepeatAt(e.target.value)}
+          />
+        </label>
+      ) : null}
     </Sheet>
   );
 }
