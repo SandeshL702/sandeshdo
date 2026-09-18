@@ -60,7 +60,7 @@
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Exact task reminder that posts a heads-up banner with the app closed." />
+                android:value="Exact task reminder that opens a lock-screen popup with the app closed." />
         </service>
         <receiver
             android:name=".AlertReceiver"

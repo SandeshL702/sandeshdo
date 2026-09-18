@@ -45,7 +45,7 @@ function TodayPage() {
   const load = useMemo(() => selectDayLoad(tasks, completions), [tasks, completions]);
   const completedGroups = useMemo(() => selectCompletionsByDay(completions, now), [completions, now]);
   const todayKey = dayKey(now);
-  const finishedToday = completions.filter((c) => dayKey(c.completedAt) === todayKey).length;
+  const finishedToday = completions.filter((c) => !c.undoneAt && dayKey(c.completedAt) === todayKey).length;
   const name = settings.userName.trim() || (settings.locale === "hi" ? "dost" : "there");
   const hour = new Date(now).getHours();
   const greetKey = hour < 12 ? "greet.morning" : hour < 17 ? "greet.afternoon" : "greet.evening";

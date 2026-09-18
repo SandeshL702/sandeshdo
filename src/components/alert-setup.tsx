@@ -45,7 +45,7 @@ export function AlertSetup() {
 
   const notifyOk =
     native ? health.notifications : typeof Notification !== "undefined" && Notification.permission === "granted";
-  const allOk = notifyOk && health.exactAlarms && health.battery;
+  const allOk = notifyOk && health.exactAlarms && health.battery && health.fullScreen;
 
   if (allOk) return null;
   if (skipped) {
@@ -58,7 +58,7 @@ export function AlertSetup() {
         <ShieldAlert className="size-4 shrink-0" />
         <span className="min-w-0">
           <span className="block text-sm font-semibold">Alerts are blocked</span>
-          <span className="mt-0.5 block text-xs opacity-80">Tap to allow small reminder banners</span>
+          <span className="mt-0.5 block text-xs opacity-80">Tap to allow lock-screen popups</span>
         </span>
       </button>
     );
@@ -68,7 +68,7 @@ export function AlertSetup() {
     {
       ok: notifyOk,
       label: "Notifications",
-      hint: "Small banner when a task is due",
+      hint: "Popup when a task is due — even if the app is closed",
       go: async () => {
         const ok = await ensureNotificationPermission();
         patchSettings({ notificationsEnabled: ok || true });
@@ -82,6 +82,12 @@ export function AlertSetup() {
       label: "Alarms & reminders",
       hint: "Exact time. Required.",
       go: () => window.SandeshDoHost?.openExactAlarmSettings(),
+    },
+    {
+      ok: health.fullScreen,
+      label: "Lock-screen popup",
+      hint: "Full-screen alert when the phone is locked",
+      go: () => window.SandeshDoHost?.openFullScreenSettings?.(),
     },
     {
       ok: health.battery,
@@ -106,11 +112,11 @@ export function AlertSetup() {
     <section className="mb-5 overflow-hidden rounded-[1.75rem] bg-fg px-4 py-4 text-bg shadow-[var(--sd-dock-shadow)]">
       <div className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.16em] uppercase opacity-70">
         <Bell className="size-3.5" />
-        Heads-up banners
+        Task popups
       </div>
-      <h2 className="font-display mt-2 text-[1.65rem] leading-tight font-medium">Allow banners. App can be closed.</h2>
+      <h2 className="font-display mt-2 text-[1.65rem] leading-tight font-medium">Allow popups. App can be closed.</h2>
       <p className="mt-2 text-sm opacity-75">
-        A small popup at the top — not a full-screen takeover. Soft chime. Works with the app closed.
+        Full-screen popup on lock screen. Done / 10 min. Soft chime. Works with the app closed.
       </p>
       <ol className="mt-4 space-y-2">
         {steps.map((s, i) => (
@@ -152,7 +158,7 @@ export function AlertSetup() {
         {countdown && countdown > 0
           ? `Close the app now · ${countdown}s`
           : next.ok
-            ? "Fire a test banner"
+            ? "Fire a test popup"
             : `Allow ${next.label}`}
       </Button>
       <button

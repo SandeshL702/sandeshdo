@@ -14,9 +14,10 @@ import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.text.TextUtils;
 import android.view.Gravity;
 
-/** Same teal tick as the live web splash. */
+/** Same teal tick as the live web splash — full word SandeshDo, never clipped. */
 public class TickSplashView extends FrameLayout {
     private final TickCanvas tick;
 
@@ -26,36 +27,64 @@ public class TickSplashView extends FrameLayout {
         setClickable(true);
         LinearLayout col = new LinearLayout(ctx);
         col.setOrientation(LinearLayout.VERTICAL);
-        col.setGravity(Gravity.CENTER);
+        col.setGravity(Gravity.CENTER_HORIZONTAL);
+        int side = dp(ctx, 24);
+        col.setPadding(side, 0, side, 0);
         tick = new TickCanvas(ctx);
-        int size = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 72, getResources().getDisplayMetrics());
+        int size = dp(ctx, 72);
         LinearLayout.LayoutParams tickLp = new LinearLayout.LayoutParams(size, size);
-        tickLp.bottomMargin = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 16, getResources().getDisplayMetrics());
+        tickLp.gravity = Gravity.CENTER_HORIZONTAL;
+        tickLp.bottomMargin = dp(ctx, 16);
         col.addView(tick, tickLp);
+
         TextView title = new TextView(ctx);
         title.setText("SandeshDo");
         title.setTextColor(Color.parseColor("#F6F3EC"));
-        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 34);
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 28);
         title.setTypeface(Typeface.create("serif", Typeface.NORMAL));
         title.setGravity(Gravity.CENTER);
+        title.setSingleLine(true);
+        title.setMaxLines(1);
+        title.setEllipsize(null);
+        title.setHorizontallyScrolling(true);
+        title.setIncludeFontPadding(false);
+        title.setLetterSpacing(-0.02f);
         title.setAlpha(0f);
         title.animate().alpha(1f).setStartDelay(180).setDuration(400).start();
+        LinearLayout.LayoutParams titleLp =
+                new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        col.addView(title, titleLp);
+
         TextView tag = new TextView(ctx);
         tag.setText("Remember · Do · Finish");
         tag.setTextColor(Color.parseColor("#C9EDE4"));
         tag.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
         tag.setLetterSpacing(0.16f);
         tag.setGravity(Gravity.CENTER);
-        tag.setPadding(0, 16, 0, 0);
+        tag.setSingleLine(true);
+        tag.setMaxLines(1);
+        tag.setEllipsize(TextUtils.TruncateAt.END);
+        tag.setPadding(0, dp(ctx, 12), 0, 0);
         tag.setAlpha(0f);
         tag.animate().alpha(1f).setStartDelay(280).setDuration(400).start();
-        col.addView(title);
-        col.addView(tag);
+        LinearLayout.LayoutParams tagLp =
+                new LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        col.addView(tag, tagLp);
+
         FrameLayout.LayoutParams lp =
                 new FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        Gravity.CENTER);
+        col.setGravity(Gravity.CENTER);
         addView(col, lp);
         tick.start();
+    }
+
+    private static int dp(Context ctx, int v) {
+        return Math.round(ctx.getResources().getDisplayMetrics().density * v);
     }
 
     static class TickCanvas extends View {
@@ -70,12 +99,16 @@ public class TickSplashView extends FrameLayout {
             super(ctx);
             ring.setStyle(Paint.Style.STROKE);
             ring.setColor(Color.parseColor("#F6F3EC"));
-            ring.setStrokeWidth(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 2.4f, getResources().getDisplayMetrics()));
+            ring.setStrokeWidth(
+                    TypedValue.applyDimension(
+                            TypedValue.COMPLEX_UNIT_DIP, 2.4f, getResources().getDisplayMetrics()));
             mark.setStyle(Paint.Style.STROKE);
             mark.setColor(Color.parseColor("#F6F3EC"));
             mark.setStrokeCap(Paint.Cap.ROUND);
             mark.setStrokeJoin(Paint.Join.ROUND);
-            mark.setStrokeWidth(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 4.2f, getResources().getDisplayMetrics()));
+            mark.setStrokeWidth(
+                    TypedValue.applyDimension(
+                            TypedValue.COMPLEX_UNIT_DIP, 4.2f, getResources().getDisplayMetrics()));
         }
 
         void start() {

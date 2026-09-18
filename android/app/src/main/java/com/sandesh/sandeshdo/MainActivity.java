@@ -44,6 +44,7 @@ import java.nio.charset.StandardCharsets;
 public class MainActivity extends AppCompatActivity {
     private static final String ORIGIN = "https://appassets.androidplatform.net";
     private static final Uri INDEX = Uri.parse(ORIGIN + "/index.html");
+    private static final String HOME = ORIGIN + "/";
 
     private static WeakReference<MainActivity> live = new WeakReference<>(null);
     private WebView webView;
@@ -173,8 +174,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void bootFromAssets() {
-        // Real https origin so ES modules run. loadDataWithBaseURL leaves a green screen.
-        webView.loadUrl(INDEX.toString());
+        // Load `/` so TanStack matches the home route. `/index.html` rendered "Not found".
+        webView.loadUrl(HOME);
     }
 
     @Nullable
@@ -263,7 +264,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             new AlertDialog.Builder(this)
                     .setTitle("Allow reminders")
-                    .setMessage("SandeshDo shows a small banner when a task is due — even if the app is closed.")
+                    .setMessage("SandeshDo shows a popup when a task is due — even if the app is closed.")
                     .setPositiveButton(
                             "Allow",
                             (d, w) ->
@@ -465,13 +466,28 @@ public class MainActivity extends AppCompatActivity {
             if (host == null || !host.equals("appassets.androidplatform.net")) {
                 return null;
             }
-            WebResourceResponse found = assetLoader.shouldInterceptRequest(url);
-            if (found != null) return found;
             String path = url.getPath();
-            if (path == null || path.equals("/") || !looksLikeFile(path)) {
+            if (path == null || path.isEmpty()) path = "/";
+            boolean page = path.equals("/") || path.equals("/index.html");
+            Uri assetUri = page ? INDEX : url;
+            WebResourceResponse found = assetLoader.shouldInterceptRequest(assetUri);
+            if (found != null) {
+                int code = found.getStatusCode();
+                if (code == 0 || (code >= 200 && code < 400)) return found;
+            }
+            if (page || !looksLikeFile(path)) {
                 return assetLoader.shouldInterceptRequest(INDEX);
             }
             return null;
+        }
+
+        @Override
+        public void onPageFinished(WebView view, String url) {
+            if (url != null && url.contains("index.html")) {
+                view.evaluateJavascript(
+                        "(function(){try{if(/index\\.html/.test(location.pathname))history.replaceState(null,'','/'+location.search+location.hash);}catch(e){}})();",
+                        null);
+            }
         }
 
         private static boolean looksLikeFile(String path) {

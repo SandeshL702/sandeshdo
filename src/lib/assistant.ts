@@ -61,14 +61,19 @@ function asEpoch(v: unknown): number | null {
 }
 
 function findTask(tasks: Task[], query: string): Task | undefined {
-  const q = query.trim().toLowerCase();
+  const q = query.trim().toLowerCase().replace(/[?!.,]/g, "");
   if (!q) return undefined;
   const open = tasks.filter((t) => t.status !== "completed");
-  return (
-    open.find((t) => t.title.toLowerCase() === q) ??
-    open.find((t) => t.title.toLowerCase().includes(q)) ??
-    open.find((t) => q.includes(t.title.toLowerCase()))
-  );
+  const exact = open.find((t) => t.title.toLowerCase() === q);
+  if (exact) return exact;
+  const includes = open.find((t) => t.title.toLowerCase().includes(q) || q.includes(t.title.toLowerCase()));
+  if (includes) return includes;
+  const tokens = q.split(/\s+/).filter((w) => w.length >= 3);
+  if (!tokens.length) return undefined;
+  return open.find((t) => {
+    const title = t.title.toLowerCase();
+    return tokens.some((w) => title.includes(w));
+  });
 }
 
 function polishTask(title: string, dueAt: number | null | undefined, userText: string) {
@@ -240,6 +245,18 @@ export function localUnderstand(raw: string, snapshot: AssistantSnapshot): Assis
     }
   }
 
+  if (/\b(pehle kya|kya karun|kya pehle|priority|should i|advice|help me|kya important|kya urgent)\b/i.test(lower)) {
+    const first = overdue[0] ?? today[0] ?? open[0];
+    const extra = overdue.length ? ` ${overdue.length} overdue.` : today.length ? ` ${today.length} aaj.` : "";
+    return {
+      say: first
+        ? `Pehle ye kar: ${first.title}.${extra}`
+        : "Kuch pending nahi. Naya kaam bolo, main laga dunga.",
+      actions: [],
+      source: "local",
+    };
+  }
+
   if (/\b(pending|left|bache|overdue|aaj kya|what's left|kya pending|kya hai|kya karna)\b/.test(lower) && !/\b(karna hai|khatam)\b/.test(lower)) {
     const titles = [...overdue, ...today].slice(0, 4).map((t) => t.title);
     const lines = `${overdue.length} overdue · ${today.length} aaj · ${open.length} open`;
@@ -288,7 +305,9 @@ export function localUnderstand(raw: string, snapshot: AssistantSnapshot): Assis
     };
   }
 
-  const done = lower.match(/^(?:done|finish|complete|tick|khatam|ho gaya)\s+(.+)$/i);
+  const done =
+    lower.match(/^(?:done|finish(?:ed)?|complete(?:d)?|tick|khatam|ho g(?:aya|ya)|hogaya)\s+(.+)$/i) ??
+    lower.match(/^(.+?)\s+(?:ho g(?:aya|ya)|hogaya|khatam(?: kar diya)?|done|finished)$/i);
   if (done?.[1]) {
     const task = findTask(snapshot.tasks, done[1]);
     return {
@@ -422,6 +441,26 @@ function polishResult(result: AssistantResult, userText: string): AssistantResul
   return { ...result, actions };
 }
 
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error("timeout")), ms);
+    p.then(
+      (v) => {
+        clearTimeout(timer);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(timer);
+        reject(e);
+      },
+    );
+  });
+}
+
+function isNativeHost(): boolean {
+  return typeof window !== "undefined" && Boolean(window.SandeshDoHost);
+}
+
 async function callLlmRaw(apiKey: string, prompt: string): Promise<string> {
   const key = sanitizeGeminiKey(apiKey);
   const host = typeof window !== "undefined" ? window.SandeshDoHost : undefined;
@@ -441,11 +480,14 @@ async function callLlmRaw(apiKey: string, prompt: string): Promise<string> {
     throw new Error(text || "native llm failed");
   }
 
+  if (host) throw new Error("native llm failed");
+
   try {
     const res = await fetch("/api/llm", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ key, prompt }),
+      signal: AbortSignal.timeout(8_000),
     });
     const raw = await res.text();
     if (res.status !== 404 && raw && !raw.trim().startsWith("<")) {
@@ -455,7 +497,7 @@ async function callLlmRaw(apiKey: string, prompt: string): Promise<string> {
       if (!res.ok) throw new Error(`AI ${res.status}`);
     }
   } catch (err) {
-    if (err instanceof Error && !/fetch|NetworkError|404|Failed to fetch|Unexpected token/i.test(err.message)) {
+    if (err instanceof Error && !/fetch|NetworkError|404|Failed to fetch|Unexpected token|timeout/i.test(err.message)) {
       throw err;
     }
   }
@@ -471,6 +513,7 @@ export async function askGemini(prompt: string, apiKey: string, snapshot: Assist
 }
 
 async function askGrokClient(prompt: string, snapshot: AssistantSnapshot, history: string): Promise<AssistantResult | null> {
+  if (isNativeHost()) return null;
   const payload = {
     prompt,
     brief: appBrief(snapshot),
@@ -482,6 +525,7 @@ async function askGrokClient(prompt: string, snapshot: AssistantSnapshot, histor
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(8_000),
     });
     const raw = await res.text();
     if (res.ok && raw && !raw.trim().startsWith("<")) {
@@ -492,7 +536,7 @@ async function askGrokClient(prompt: string, snapshot: AssistantSnapshot, histor
     /* server fn */
   }
   try {
-    const grok = await askSandyBrain({ data: payload });
+    const grok = await withTimeout(askSandyBrain({ data: payload }), 8_000);
     if (grok.ok) return polishResult(parseGeminiText(grok.text), prompt);
   } catch {
     /* none */
@@ -554,13 +598,22 @@ export async function runAssistant(
   };
 
   if (localSolid && !asking) return local;
+  if (local.actions.length && !asking) return local;
+  if (local.say) return local;
 
-  const grok = await askGrokClient(prompt, snapshot, history);
-  if (grok) return finishRemote(grok);
+  const native = isNativeHost();
+  if (!native) {
+    try {
+      const grok = await withTimeout(askGrokClient(prompt, snapshot, history), 8_000);
+      if (grok) return finishRemote(grok);
+    } catch {
+      /* fall through */
+    }
+  }
 
   if (apiKey.trim()) {
     try {
-      return finishRemote(await askGemini(prompt, apiKey.trim(), snapshot));
+      return finishRemote(await withTimeout(askGemini(prompt, apiKey.trim(), snapshot), 10_000));
     } catch {
       if (local.actions.length || local.say) return local;
     }

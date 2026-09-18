@@ -15,7 +15,10 @@ export function JuiceLayer() {
   const [burst, setBurst] = useState<Burst | null>(null);
 
   useEffect(() => {
-    if (!event) return;
+    if (!event) {
+      setBurst(null);
+      return;
+    }
     const next: Burst = {
       id: event.completedAt,
       xp: event.xpGain,
@@ -25,14 +28,17 @@ export function JuiceLayer() {
       rank: event.rank,
     };
     setBurst(next);
-    const timer = window.setTimeout(() => setBurst(null), 1400);
+    const timer = window.setTimeout(() => setBurst(null), 800);
     return () => window.clearTimeout(timer);
   }, [event]);
 
   if (!burst) return null;
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-[18%] z-[90] flex flex-col items-center" aria-hidden>
+    <div
+      className="pointer-events-none fixed inset-x-0 top-[18%] z-[90] flex flex-col items-center"
+      aria-hidden
+    >
       {burst.combo > 1 && (
         <div className="sd-combo-stamp font-display text-4xl font-medium tracking-tight text-primary">
           x{burst.combo}
@@ -41,7 +47,7 @@ export function JuiceLayer() {
       <div className="relative mt-3 h-16 w-40">
         {Array.from({ length: 10 }).map((_, i) => (
           <span
-            key={i}
+            key={`${burst.id}-${i}`}
             className="sd-spark absolute top-1/2 left-1/2 size-1.5 rounded-full bg-primary"
             style={
               {

@@ -79,6 +79,13 @@ public class HostBridge {
     }
 
     @JavascriptInterface
+    public void cancelTask(String taskId) {
+        if (taskId == null || taskId.isEmpty()) return;
+        AlarmScheduler.cancelTask(ctx, taskId);
+        AlarmService.cancelNote(ctx, taskId);
+    }
+
+    @JavascriptInterface
     public String takeActions() {
         return ActionReceiver.drain(ctx);
     }
@@ -104,12 +111,13 @@ public class HostBridge {
     @JavascriptInterface
     public void fireNow(String title) {
         String t = title == null || title.isEmpty() ? "Pay electricity bill" : title;
-        AlarmService.postHeadsUp(ctx, "test", t, "Test banner · app can be closed", true);
+        AlarmService.launchPopup(ctx, "test", t, "Test popup · app can be closed", true);
+        AlarmService.postHeadsUp(ctx, "test", t, "Test popup · app can be closed", true);
         AlertChime.play(ctx);
         AlertReceiver.vibrate(ctx);
         Intent i = new Intent(ctx, AlarmService.class);
         i.putExtra("title", t);
-        i.putExtra("body", "Test banner · app can be closed");
+        i.putExtra("body", "Test popup · app can be closed");
         i.putExtra("overdue", true);
         i.putExtra("taskId", "test");
         i.putExtra("repeatMin", 0);
@@ -229,19 +237,11 @@ public class HostBridge {
         }
         String last = "ERR:no model";
         String[] models = geminiModelOrder();
-        for (int i = 0; i < Math.min(4, models.length); i++) {
-            GeminiHit hit = interactGemini(k, models[i], prompt);
+        int max = Math.min(2, models.length);
+        for (int i = 0; i < max; i++) {
+            GeminiHit hit = generateGemini(k, models[i], prompt);
             if (hit.text != null && hit.text.length() > 0) {
                 cachedGeminiModel = models[i];
-                return hit.text;
-            }
-            if (hit.error != null) last = hit.error;
-            if (hit.fatal) return last;
-        }
-        for (String model : models) {
-            GeminiHit hit = generateGemini(k, model, prompt);
-            if (hit.text != null && hit.text.length() > 0) {
-                cachedGeminiModel = model;
                 return hit.text;
             }
             if (hit.error != null) last = hit.error;
@@ -262,8 +262,8 @@ public class HostBridge {
             if (authorization != null && !authorization.trim().isEmpty()) {
                 conn.setRequestProperty("Authorization", authorization.trim());
             }
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(20000);
+            conn.setConnectTimeout(6000);
+            conn.setReadTimeout(12000);
             conn.setDoOutput(true);
             OutputStream os = conn.getOutputStream();
             os.write(body.getBytes(StandardCharsets.UTF_8));
@@ -386,8 +386,8 @@ public class HostBridge {
             conn.setRequestProperty("Content-Type", "application/json");
             conn.setRequestProperty("Accept", "application/json");
             conn.setRequestProperty("x-goog-api-key", key);
-            conn.setConnectTimeout(10000);
-            conn.setReadTimeout(20000);
+            conn.setConnectTimeout(6000);
+            conn.setReadTimeout(12000);
             conn.setDoOutput(true);
             OutputStream os = conn.getOutputStream();
             os.write(body.toString().getBytes(StandardCharsets.UTF_8));

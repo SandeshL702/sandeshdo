@@ -32,7 +32,7 @@ import { uid } from "./utils";
 import { dayKey, dayHeading, tomorrowMorning } from "./time";
 import { canRecur, nextFutureOccurrence } from "./recurrence";
 import { liveStatus, rebuildReminders } from "./engine";
-import { notifyFocus, notifySummary, notifyTask, playGentleTone, pulseVibrate, syncScheduledAlarms } from "./notifications";
+import { notifyFocus, notifySummary, notifyTask, playGentleTone, pulseVibrate, syncScheduledAlarms, cancelNativeTask } from "./notifications";
 import { takePendingActions } from "./alarms";
 import {
   applyFinish,
@@ -341,6 +341,25 @@ function bumpReminderCount(task: Task, now: number): Task {
   return { ...task, reminderCount, reminderDayKey: today, lastReminderAt: now, updatedAt: now };
 }
 
+const DEMO_TASK_TITLES = new Set([
+  "Pay electricity bill",
+  "Call client",
+  "Study Python",
+  "Submit report",
+  "Morning walk",
+  "Water plants",
+  "Reply to landlord",
+  "Fill water bottles",
+  "File rent receipt",
+]);
+const DEMO_TX_NOTES = new Set(["Salary", "Lunch", "Metro", "Wifi"]);
+const DEMO_TASK_IDS = new Set(["seed-water", "seed-landlord", "seed-bottles", "seed-rent"]);
+const DEMO_REV = 21;
+
+function isDemoTaskTitle(title: string, id?: string) {
+  return DEMO_TASK_TITLES.has(title) || (id != null && DEMO_TASK_IDS.has(id));
+}
+
 function initialClientData() {
   const now = Date.now();
   return {
@@ -363,7 +382,7 @@ function initialClientData() {
     settings: {
       ...DEFAULT_SETTINGS,
       seededOnce: true,
-      demoRev: 20,
+      demoRev: DEMO_REV,
       notifyRev: 19,
     },
   };
@@ -397,7 +416,7 @@ function pushAlarms(): void {
 
 function questState(s: { tasks: Task[]; completions: Completion[]; transactions: Transaction[] }, now: number) {
   return dailyQuests({
-    finishedToday: s.completions.filter((c) => dayKey(c.completedAt) === dayKey(now)).length,
+    finishedToday: s.completions.filter((c) => !c.undoneAt && dayKey(c.completedAt) === dayKey(now)).length,
     overdue: s.tasks.filter((t) => t.status !== "completed" && liveStatus(t, now) === "overdue").length,
     moneyToday: s.transactions.filter((tx) => dayKey(tx.at) === dayKey(now)).length,
   });
@@ -466,10 +485,24 @@ export const useApp = create<AppState>()(
         if (!get().categories.length) set({ categories: DEFAULT_CATEGORIES });
         if (!get().moneyCategories.length) set({ moneyCategories: DEFAULT_MONEY_CATEGORIES });
         else set({ moneyCategories: ensureIncomeCats(get().moneyCategories) });
-        if (isDemoBudgets(get().budgets)) {
-          set({ budgets: [], settings: { ...get().settings, demoRev: 20, seededOnce: true } });
-        } else if ((get().settings.demoRev ?? 0) < 20) {
-          set({ settings: { ...get().settings, demoRev: 20 } });
+        if (isDemoBudgets(get().budgets) || (get().settings.demoRev ?? 0) < DEMO_REV) {
+          const now = Date.now();
+          set((s) => {
+            const tasks = s.tasks.filter((t) => !isDemoTaskTitle(t.title, t.id));
+            const completions = s.completions.filter((c) => !isDemoTaskTitle(c.title, c.taskId));
+            const demoMoney = isDemoBudgets(s.budgets);
+            const transactions = demoMoney
+              ? s.transactions.filter((tx) => !DEMO_TX_NOTES.has(tx.note))
+              : s.transactions;
+            return {
+              tasks,
+              completions,
+              transactions,
+              budgets: demoMoney ? [] : s.budgets,
+              reminders: rebuildReminders(tasks, s.settings, now, transactions, s.recurringSpends),
+              settings: { ...s.settings, demoRev: DEMO_REV, seededOnce: true },
+            };
+          });
         }
         if (!restored) get().seedIfNeeded();
         void get().applyWorkerActions();
@@ -483,7 +516,7 @@ export const useApp = create<AppState>()(
           settings: {
             ...settings,
             seededOnce: true,
-            demoRev: 20,
+            demoRev: DEMO_REV,
             notifyRev: 19,
             notificationsEnabled: true,
           },
@@ -531,6 +564,7 @@ export const useApp = create<AppState>()(
             focus: s.focus.taskId === id ? DEFAULT_FOCUS : s.focus,
           };
         });
+        cancelNativeTask(id);
         armScheduler();
         queueBackup();
       },
@@ -624,6 +658,7 @@ export const useApp = create<AppState>()(
         else playCompleteSfx(finish?.combo ?? 1);
         if (settings.notifyTone === "gentle" && !finish?.levelUp) playGentleTone();
         pulseVibrate(settings.notifyVibrate);
+        cancelNativeTask(id);
         armScheduler();
         queueBackup();
       },
@@ -1414,7 +1449,7 @@ export const useApp = create<AppState>()(
           settings: {
             ...DEFAULT_SETTINGS,
             seededOnce: true,
-            demoRev: 20,
+            demoRev: DEMO_REV,
             notifyRev: 19,
             notificationsEnabled: true,
             theme: get().settings.theme,
@@ -1437,28 +1472,20 @@ export const useApp = create<AppState>()(
       },
 
       clearDemo: () => {
-        const DEMO_TITLES = new Set([
-          "Pay electricity bill",
-          "Call client",
-          "Study Python",
-          "Submit report",
-          "Morning walk",
-          "Water plants",
-        ]);
-        const DEMO_NOTES = new Set(["Salary", "Lunch", "Metro", "Wifi"]);
         const now = Date.now();
         set((s) => {
-          const tasks = s.tasks.filter((t) => !DEMO_TITLES.has(t.title) && t.id !== "seed-water");
-          const transactions = isDemoBudgets(s.budgets)
-            ? s.transactions.filter((tx) => !DEMO_NOTES.has(tx.note))
-            : s.transactions.filter((tx) => !DEMO_NOTES.has(tx.note) || s.transactions.length > 8);
+          const tasks = s.tasks.filter((t) => !isDemoTaskTitle(t.title, t.id));
+          const demoMoney = isDemoBudgets(s.budgets);
+          const transactions = demoMoney
+            ? s.transactions.filter((tx) => !DEMO_TX_NOTES.has(tx.note))
+            : s.transactions.filter((tx) => !DEMO_TX_NOTES.has(tx.note) || s.transactions.length > 8);
           return {
             tasks,
-            completions: s.completions.filter((c) => !DEMO_TITLES.has(c.title)),
+            completions: s.completions.filter((c) => !isDemoTaskTitle(c.title, c.taskId)),
             transactions,
-            budgets: isDemoBudgets(s.budgets) ? [] : s.budgets,
-            reminders: rebuildReminders(tasks, s.settings, now, transactions),
-            settings: { ...s.settings, demoRev: 19, seededOnce: true },
+            budgets: demoMoney ? [] : s.budgets,
+            reminders: rebuildReminders(tasks, s.settings, now, transactions, s.recurringSpends),
+            settings: { ...s.settings, demoRev: DEMO_REV, seededOnce: true },
           };
         });
         armScheduler();
@@ -1521,18 +1548,10 @@ export const useApp = create<AppState>()(
       merge: (persisted, current) => {
         if (!persisted || typeof persisted !== "object") return current;
         const p = persisted as Partial<AppState>;
-        const DEMO_TITLES = new Set([
-          "Pay electricity bill",
-          "Call client",
-          "Study Python",
-          "Submit report",
-          "Morning walk",
-          "Water plants",
-        ]);
         const tasksIn = p.tasks ?? current.tasks;
         const onlyDemo =
           tasksIn.length > 0 &&
-          tasksIn.every((t) => DEMO_TITLES.has(t.title) || t.id === "seed-water");
+          tasksIn.every((t) => isDemoTaskTitle(t.title, t.id));
         const mergedSettings = (() => {
           const merged = { ...DEFAULT_SETTINGS, ...current.settings, ...p.settings };
           if (!merged.localeRev || merged.localeRev < 19) {
@@ -1743,6 +1762,7 @@ export function selectDayLoad(tasks: Task[], completions: Completion[]) {
     openTitles.set(key, list);
   }
   for (const c of completions) {
+    if (c.undoneAt) continue;
     const key = dayKey(c.completedAt);
     finished.set(key, (finished.get(key) ?? 0) + 1);
   }

@@ -31,10 +31,11 @@ public class AlertReceiver extends BroadcastReceiver {
         String title = intent.getStringExtra("title");
         String body = intent.getStringExtra("body");
         boolean overdue = intent.getBooleanExtra("overdue", false);
-        int repeatMin = intent.getIntExtra("repeatMin", AlarmScheduler.DEFAULT_REPEAT_MIN);
+        int repeatMin = intent.getIntExtra("repeatMin", 0);
 
-        // Post the heads-up first — don't depend on the FGS starting.
+        // Heads-up + lock-screen popup. AlarmClock fire is allowed to start an activity.
         AlarmService.postHeadsUp(context, taskId, title, body, overdue);
+        AlarmService.launchPopup(context, taskId, title, body, overdue);
         AlertChime.play(context);
         vibrate(context);
 

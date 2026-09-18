@@ -316,7 +316,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lastPaisaNudgeOn: null,
   geminiApiKey: "",
   notifyRev: 19,
-  demoRev: 19,
+  demoRev: 21,
   pinHash: "",
   voiceEnabled: true,
 };

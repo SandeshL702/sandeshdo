@@ -43,6 +43,7 @@ export function buildDayLog(
 ): DayEntry[] {
   const entries: DayEntry[] = [];
   for (const c of completions) {
+    if (c.undoneAt) continue;
     if (dayKey(c.completedAt) !== key) continue;
     entries.push({ kind: "done", at: c.completedAt, title: c.title, id: c.id });
   }

@@ -320,18 +320,22 @@
     transform: scale(0.4) rotate(-8deg);
     opacity: 0;
   }
-  55% {
+  22% {
     transform: scale(1.12) rotate(2deg);
     opacity: 1;
   }
-  100% {
+  62% {
     transform: scale(1) rotate(0deg);
     opacity: 1;
+  }
+  100% {
+    transform: scale(0.94) rotate(0deg);
+    opacity: 0;
   }
 }
 
 .sd-combo-stamp {
-  animation: sd-combo-stamp 380ms var(--ease-out) both;
+  animation: sd-combo-stamp 800ms var(--ease-out) both;
 }
 
 @keyframes sd-spark {

@@ -34,6 +34,7 @@ declare global {
       shareBackup?: (json: string) => void;
       saveToDrive?: (json: string) => void;
       pickRestore?: () => void;
+      cancelTask?: (taskId: string) => void;
     };
   }
 }
@@ -299,12 +300,26 @@ async function showWebNotification(title: string, body: string, tag: string, cha
   }
 }
 
+export function cancelNativeTask(taskId: string | undefined | null): void {
+  if (!taskId || typeof window === "undefined") return;
+  try {
+    window.SandeshDoHost?.cancelTask?.(taskId);
+  } catch {
+    /* native optional */
+  }
+}
+
 export async function syncScheduledAlarms(reminders: Reminder[], tasks: Task[], settings: Settings): Promise<void> {
   const host = typeof window !== "undefined" ? window.SandeshDoHost : undefined;
   const now = Date.now();
   const open = tasks.filter((t) => t.status !== "completed");
   const records: AlarmRecord[] = reminders
-    .filter((r) => r.status === "pending" && r.triggerAt >= now - 30_000)
+    .filter((r) => {
+      if (r.status !== "pending") return false;
+      if (r.triggerAt < now - 30_000) return false;
+      if (r.taskId === "paisa" || r.type === "paisa") return true;
+      return open.some((t) => t.id === r.taskId);
+    })
     .map((r) => {
       if (r.taskId === "paisa" || r.type === "paisa") {
         return {
@@ -314,20 +329,21 @@ export async function syncScheduledAlarms(reminders: Reminder[], tasks: Task[], 
           body: settings.locale === "en" ? "Got or spent. 10 seconds." : "Aaya ya Gaya. 10 second.",
           triggerAt: r.triggerAt,
           overdue: false,
-          priority: "high",
+          priority: "high" as const,
           repeatMin: 0,
         };
       }
       const task = open.find((t) => t.id === r.taskId);
+      const overdue = task ? liveStatus(task, now) === "overdue" : r.type === "overdue";
       return {
         id: r.id,
         taskId: r.taskId,
         title: task?.title ?? "SandeshDo",
-        body: r.type === "overdue" ? "Overdue" : "Due now",
+        body: overdue ? "Overdue" : "Due now",
         triggerAt: r.triggerAt,
-        overdue: task ? liveStatus(task, now) === "overdue" : r.type === "overdue",
+        overdue,
         priority: task?.priority ?? "medium",
-        repeatMin: 15,
+        repeatMin: overdue ? 15 : 0,
       };
     });
   if (host?.syncAlarms) {

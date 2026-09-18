@@ -259,7 +259,7 @@ public final class AlarmScheduler {
         intent.putExtra("title", o.optString("title", "SandeshDo"));
         intent.putExtra("body", o.optString("body", "Due now"));
         intent.putExtra("overdue", o.optBoolean("overdue", false));
-        intent.putExtra("repeatMin", o.optInt("repeatMin", DEFAULT_REPEAT_MIN));
+        intent.putExtra("repeatMin", o.optInt("repeatMin", 0));
         int code = requestCode(o.optString("id", o.optString("taskId", String.valueOf(fallback))));
         return PendingIntent.getBroadcast(
                 ctx, code, intent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);

@@ -8,7 +8,7 @@ export function BrandMark({
   className?: string;
 }) {
   return (
-    <div className={cn("flex min-w-0 items-center gap-2", className)}>
+    <div className={cn("flex shrink-0 items-center gap-2", className)}>
       <span
         aria-hidden
         className={cn(
@@ -18,7 +18,12 @@ export function BrandMark({
       >
         S
       </span>
-      <span className={cn("min-w-0 truncate font-display font-medium tracking-tight", compact ? "text-base" : "text-lg")}>
+      <span
+        className={cn(
+          "whitespace-nowrap font-display font-medium tracking-tight",
+          compact ? "text-base" : "text-lg",
+        )}
+      >
         SandeshDo
       </span>
     </div>

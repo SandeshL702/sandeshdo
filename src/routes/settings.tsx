@@ -263,9 +263,9 @@ export function SettingsPage() {
             <span>SandeshDo</span>
             <span>heads-up</span>
           </div>
-          <div className="mt-2 font-display text-xl font-medium leading-tight">Task due · Call client</div>
+          <div className="mt-2 font-display text-xl font-medium leading-tight">Due now · Call client</div>
           <p className="mt-1 text-xs opacity-75">
-            Small banner at the top. Soft chime. Works with the app closed. Not a full-screen takeover.
+            Full-screen popup even if SandeshDo is closed. Done / Snooze on the lock screen. Soft chime.
           </p>
         </div>
         <div className="mb-3 space-y-2 text-sm">
@@ -292,6 +292,13 @@ export function SettingsPage() {
                 onFix={() => window.SandeshDoHost?.openExactAlarmSettings()}
               />
               <HealthRow
+                ok={health.fullScreen}
+                label="Lock-screen popup"
+                ready={t("alert.ready")}
+                needs={t("alert.needs")}
+                onFix={() => window.SandeshDoHost?.openFullScreenSettings?.()}
+              />
+              <HealthRow
                 ok={health.battery}
                 label="Ignore battery saving"
                 ready={t("alert.ready")}
@@ -310,7 +317,7 @@ export function SettingsPage() {
             </>
           )}
         </div>
-        <Row label="Phone banners" hint="Small popup when a task is due. Required with the app closed.">
+        <Row label="Phone popups" hint="Full-screen popup when a task is due, even with the app closed.">
           <Switch
             checked={settings.notificationsEnabled}
             onCheckedChange={async (next) => {
@@ -356,12 +363,12 @@ export function SettingsPage() {
             if (ok) {
               patchSettings({ notificationsEnabled: true });
               setCountdown(10);
-              toast("Close the app now. Banner in 10 seconds.");
+              toast("Close the app now. Popup in 10 seconds.");
             } else toast("Allow notifications first.");
             setHealth(readNativeHealth());
           }}
         >
-          {countdown && countdown > 0 ? `Close the app · ${countdown}s` : "Fire a test banner"}
+          {countdown && countdown > 0 ? `Close the app · ${countdown}s` : "Fire a test popup"}
         </Button>
         <Button
           className="mt-2 w-full"
@@ -371,7 +378,7 @@ export function SettingsPage() {
             useApp.getState().previewReminder();
           }}
         >
-          Preview banner
+          Preview popup
         </Button>
       </Section>
 
@@ -699,7 +706,14 @@ export function SettingsPage() {
         >
           {t("settings.pdf")}
         </Link>
-        <Button className="mt-2 w-full" variant="ghost" onClick={clearDemo}>
+        <Button
+          className="mt-2 w-full"
+          variant="ghost"
+          onClick={() => {
+            clearDemo();
+            toast(t("settings.clearDemoOk"));
+          }}
+        >
           {t("settings.clearDemo")}
         </Button>
         <Button className="mt-2 w-full" variant="ghost" onClick={resetDemo}>

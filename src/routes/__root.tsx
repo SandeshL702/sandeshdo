@@ -50,7 +50,7 @@ function RootDocument() {
         <HeadContent />
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var raw=localStorage.getItem("sandeshdo-v2")||localStorage.getItem("sandeshdo-v1");var t=raw?JSON.parse(raw).state.settings.theme:null;var dark=t==="dark"||(t!=="light"&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(dark)document.documentElement.classList.add("dark");}catch(e){}try{if(sessionStorage.getItem("sandeshdo-hi")==="1")document.documentElement.classList.add("sd-no-splash");}catch(e){}})();`,
+            __html: `(function(){try{var p=location.pathname;if(p==="/index.html"||p==="/index.htm"||/\\/index\\.html$/.test(p)){history.replaceState(null,"","/"+location.search+location.hash);}}catch(e){}try{var raw=localStorage.getItem("sandeshdo-v2")||localStorage.getItem("sandeshdo-v1");var t=raw?JSON.parse(raw).state.settings.theme:null;var dark=t==="dark"||(t!=="light"&&window.matchMedia("(prefers-color-scheme: dark)").matches);if(dark)document.documentElement.classList.add("dark");}catch(e){}try{if(sessionStorage.getItem("sandeshdo-hi")==="1")document.documentElement.classList.add("sd-no-splash");}catch(e){}})();`,
           }}
         />
         <style
@@ -82,7 +82,13 @@ function RootDocument() {
           </svg>
           <p
             className="sd-splash-mark font-display text-4xl font-medium tracking-tight"
-            style={{ margin: 0, fontSize: "2.25rem", fontWeight: 500, letterSpacing: "-0.03em" }}
+            style={{
+              margin: 0,
+              fontSize: "2.25rem",
+              fontWeight: 500,
+              letterSpacing: "-0.03em",
+              whiteSpace: "nowrap",
+            }}
           >
             SandeshDo
           </p>
