@@ -15,60 +15,45 @@ public class AlertReceiver extends BroadcastReceiver {
         if (intent == null) return;
         final PendingResult pending = goAsync();
         PowerManager.WakeLock wl = null;
-        PowerManager.WakeLock screen = AlertChime.acquireScreen(context, 15_000);
+        PowerManager.WakeLock screen = AlertChime.acquireScreen(context, 8_000);
         try {
             PowerManager pm = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
             if (pm != null) {
                 wl = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "sandeshdo:rx");
                 wl.setReferenceCounted(false);
-                wl.acquire(15_000);
+                wl.acquire(8_000);
             }
         } catch (Exception ignored) {
         }
 
         AlarmService.ensureChannel(context);
+        String taskId = intent.getStringExtra("taskId");
+        String title = intent.getStringExtra("title");
+        String body = intent.getStringExtra("body");
+        boolean overdue = intent.getBooleanExtra("overdue", false);
+        int repeatMin = intent.getIntExtra("repeatMin", AlarmScheduler.DEFAULT_REPEAT_MIN);
+
+        // Post the heads-up first — don't depend on the FGS starting.
+        AlarmService.postHeadsUp(context, taskId, title, body, overdue);
+        AlertChime.play(context);
+        vibrate(context);
 
         Intent svc = new Intent(context, AlarmService.class);
-        svc.putExtra("taskId", intent.getStringExtra("taskId"));
-        svc.putExtra("title", intent.getStringExtra("title"));
-        svc.putExtra("body", intent.getStringExtra("body"));
-        svc.putExtra("overdue", intent.getBooleanExtra("overdue", false));
-        svc.putExtra("repeatMin", intent.getIntExtra("repeatMin", AlarmScheduler.DEFAULT_REPEAT_MIN));
-        boolean started = false;
+        svc.putExtra("taskId", taskId);
+        svc.putExtra("title", title);
+        svc.putExtra("body", body);
+        svc.putExtra("overdue", overdue);
+        svc.putExtra("repeatMin", repeatMin);
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(svc);
             } else {
                 context.startService(svc);
             }
-            started = true;
         } catch (Exception ignored) {
+            AlarmScheduler.onFired(context, taskId, title, "Still pending", repeatMin);
         }
-        if (!started) {
-            try {
-                int id = AlarmService.noteId(intent.getStringExtra("taskId"));
-                androidx.core.app.NotificationManagerCompat.from(context)
-                        .notify(
-                                id,
-                                AlarmService.buildAlert(
-                                        context,
-                                        intent.getStringExtra("taskId"),
-                                        intent.getStringExtra("title"),
-                                        intent.getStringExtra("body"),
-                                        intent.getBooleanExtra("overdue", false),
-                                        id));
-            } catch (Exception ignored) {
-            }
-            try {
-                Intent full = new Intent(context, AlertActivity.class);
-                full.putExtras(intent);
-                full.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-                context.startActivity(full);
-            } catch (Exception ignored) {
-            }
-            AlertChime.play(context);
-        }
-        vibrate(context);
+
         final PowerManager.WakeLock held = wl;
         final PowerManager.WakeLock heldScreen = screen;
         new android.os.Handler(android.os.Looper.getMainLooper())
@@ -84,12 +69,12 @@ public class AlertReceiver extends BroadcastReceiver {
                             }
                             pending.finish();
                         },
-                        4000);
+                        2500);
     }
 
     static void vibrate(Context context) {
         try {
-            long[] pattern = new long[] {0, 48, 80, 48};
+            long[] pattern = new long[] {0, 40, 70, 40};
             if (Build.VERSION.SDK_INT >= 31) {
                 VibratorManager vm = (VibratorManager) context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
                 if (vm != null) {

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Clock, Mic } from "lucide-react";
+import { addDays, format } from "date-fns";
+import { Mic } from "lucide-react";
 import { toast } from "sonner";
 import { Sheet } from "@/components/sheet";
 import { Button, Input } from "@/components/ui";
@@ -8,6 +9,18 @@ import { useApp } from "@/lib/store";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { taskCatLabel } from "@/lib/types";
+
+const TIME_CHIPS: { labelKey: string; h: number | null; fallback: string }[] = [
+  { labelKey: "add.none", h: null, fallback: "None" },
+  { labelKey: "add.morning", h: 9, fallback: "9 am" },
+  { labelKey: "add.afternoon", h: 13, fallback: "1 pm" },
+  { labelKey: "add.evening", h: 18, fallback: "6 pm" },
+  { labelKey: "add.night", h: 21, fallback: "9 pm" },
+];
+
+function ymd(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 export function QuickAdd({
   open,
@@ -30,25 +43,32 @@ export function QuickAdd({
   const [important, setImportant] = useState(false);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [newCat, setNewCat] = useState("");
-  const [when, setWhen] = useState<"none" | "today" | "tomorrow" | "custom">("today");
-  const [date, setDate] = useState("");
-  const [time, setTime] = useState("");
+  const [when, setWhen] = useState<"today" | "tomorrow" | "none" | "day">("today");
+  const [day, setDay] = useState("");
+  const [hour, setHour] = useState<number | null>(18);
   const [listening, setListening] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const days = useMemo(() => Array.from({ length: 8 }, (_, i) => addDays(new Date(), i)), []);
 
   useEffect(() => {
-    if (open) {
-      setTitle(prefill);
-      setImportant(false);
-      setCategoryId(null);
-      setNewCat("");
-      const n = new Date();
-      const today = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
-      setWhen(prefillDate ? "custom" : prefillWhen === "tomorrow" ? "tomorrow" : "today");
-      setDate(prefillDate || today);
-      setTime("");
-      setTimeout(() => inputRef.current?.focus(), 50);
+    if (!open) return;
+    setTitle(prefill);
+    setImportant(false);
+    setCategoryId(null);
+    setNewCat("");
+    const today = ymd(new Date());
+    if (prefillDate) {
+      setWhen("day");
+      setDay(prefillDate);
+    } else if (prefillWhen === "tomorrow") {
+      setWhen("tomorrow");
+      setDay(ymd(addDays(new Date(), 1)));
+    } else {
+      setWhen("today");
+      setDay(today);
     }
+    setHour(18);
+    setTimeout(() => inputRef.current?.focus(), 50);
   }, [open, prefill, prefillDate, prefillWhen]);
 
   const parsed = useMemo(() => parseNaturalLanguage(title), [title]);
@@ -65,9 +85,7 @@ export function QuickAdd({
     rec.interimResults = false;
     rec.onstart = () => setListening(true);
     rec.onend = () => setListening(false);
-    rec.onerror = () => {
-      setListening(false);
-    };
+    rec.onerror = () => setListening(false);
     rec.onresult = (e: { results: ArrayLike<ArrayLike<{ transcript?: string }>> }) => {
       const text = e.results[0]?.[0]?.transcript ?? "";
       if (text) setTitle((prev) => (prev ? `${prev} ${text}` : text));
@@ -76,43 +94,26 @@ export function QuickAdd({
   };
 
   const dueFromChips = (): number | null => {
-    if (when === "later" as string || when === "none") return parsed.dueAt;
-    const now = new Date();
-    if (when === "today") {
-      const d = new Date();
-      if (time) {
-        const [hh, mm] = time.split(":").map(Number);
-        d.setHours(hh ?? 18, mm ?? 0, 0, 0);
-      } else d.setHours(18, 0, 0, 0);
-      if (d.getTime() <= Date.now()) d.setHours(now.getHours() + 1, 0, 0, 0);
-      return d.getTime();
+    if (when === "none") return parsed.dueAt;
+    const base = (() => {
+      if (when === "today") return new Date();
+      if (when === "tomorrow") {
+        const d = new Date();
+        d.setDate(d.getDate() + 1);
+        return d;
+      }
+      if (day) {
+        const [y, m, d] = day.split("-").map(Number);
+        return new Date(y, (m ?? 1) - 1, d ?? 1);
+      }
+      return new Date();
+    })();
+    const h = hour ?? (when === "today" ? 18 : 9);
+    base.setHours(h, 0, 0, 0);
+    if (when === "today" && base.getTime() <= Date.now()) {
+      base.setHours(new Date().getHours() + 1, 0, 0, 0);
     }
-    if (when === "tomorrow") {
-      const d = new Date();
-      d.setDate(d.getDate() + 1);
-      if (time) {
-        const [hh, mm] = time.split(":").map(Number);
-        d.setHours(hh ?? 9, mm ?? 0, 0, 0);
-      } else d.setHours(9, 0, 0, 0);
-      return d.getTime();
-    }
-    if (date) {
-      const [y, m, d] = date.split("-").map(Number);
-      const dt = new Date(y, (m ?? 1) - 1, d ?? 1);
-      if (time) {
-        const [hh, mm] = time.split(":").map(Number);
-        dt.setHours(hh ?? 9, mm ?? 0, 0, 0);
-      } else dt.setHours(9, 0, 0, 0);
-      return dt.getTime();
-    }
-    if (time) {
-      const [hh, mm] = time.split(":").map(Number);
-      const dt = new Date();
-      dt.setHours(hh ?? 9, mm ?? 0, 0, 0);
-      if (dt.getTime() <= Date.now()) dt.setDate(dt.getDate() + 1);
-      return dt.getTime();
-    }
-    return parsed.dueAt;
+    return base.getTime();
   };
 
   const submit = () => {
@@ -133,6 +134,12 @@ export function QuickAdd({
     toast(dueAt ? t("add.alarmSet") : t("add.captured"));
     onClose();
   };
+
+  const chip = (active: boolean) =>
+    cn(
+      "h-11 shrink-0 rounded-2xl px-3 text-sm font-semibold",
+      active ? "bg-primary text-primary-fg" : "bg-bg text-muted shadow-[var(--sd-card-shadow)]",
+    );
 
   return (
     <Sheet
@@ -160,7 +167,7 @@ export function QuickAdd({
         />
         {voiceOk && (
           <Button variant={listening ? "soft" : "secondary"} size="icon" aria-label={t("add.voice")} onClick={listen}>
-            <Mic className={`size-5 ${listening ? "text-primary" : ""}`} />
+            <Mic className={cn("size-5", listening && "text-primary")} />
           </Button>
         )}
       </div>
@@ -170,13 +177,10 @@ export function QuickAdd({
           type="button"
           onClick={() => {
             setWhen("today");
-            const n = new Date();
-            setDate(`${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`);
+            setDay(ymd(new Date()));
+            if (hour == null) setHour(18);
           }}
-          className={cn(
-            "h-14 rounded-2xl text-sm font-semibold",
-            when === "today" ? "bg-primary text-primary-fg" : "bg-bg text-muted shadow-[var(--sd-card-shadow)]",
-          )}
+          className={chip(when === "today")}
         >
           {t("add.today")}
         </button>
@@ -184,46 +188,67 @@ export function QuickAdd({
           type="button"
           onClick={() => {
             setWhen("tomorrow");
-            const n = new Date();
-            n.setDate(n.getDate() + 1);
-            setDate(`${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`);
+            setDay(ymd(addDays(new Date(), 1)));
+            if (hour == null) setHour(9);
           }}
-          className={cn(
-            "h-14 rounded-2xl text-sm font-semibold",
-            when === "tomorrow" ? "bg-fg text-bg" : "bg-bg text-muted shadow-[var(--sd-card-shadow)]",
-          )}
+          className={chip(when === "tomorrow")}
         >
           {t("add.tomorrow")}
         </button>
         <button
           type="button"
-          onClick={() => setWhen("custom")}
-          className={cn(
-            "h-14 rounded-2xl text-sm font-semibold",
-            when === "custom" ? "bg-fg text-bg" : "bg-bg text-muted shadow-[var(--sd-card-shadow)]",
-          )}
+          onClick={() => {
+            setWhen("none");
+            setHour(null);
+          }}
+          className={chip(when === "none")}
         >
-          {t("add.date")}
+          {t("add.later")}
         </button>
       </div>
 
-      <label className="mt-3 flex items-center gap-2 rounded-2xl bg-bg px-3 py-2 shadow-[var(--sd-card-shadow)]">
-        <span className="text-xs font-semibold text-muted">{t("add.date")}</span>
-        <Input
-          type="date"
-          value={date}
-          onChange={(e) => {
-            setDate(e.target.value);
-            setWhen("custom");
-          }}
-          className="h-10 flex-1 shadow-none"
-        />
-      </label>
-      <label className="mt-2 flex items-center gap-2 rounded-2xl bg-bg px-3 py-2 shadow-[var(--sd-card-shadow)]">
-        <Clock className="size-4 text-muted" />
-        <span className="text-xs font-semibold text-muted">{t("add.time")}</span>
-        <Input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="h-10 flex-1 shadow-none" />
-      </label>
+      {when !== "none" && (
+        <>
+          <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+            {days.map((d, i) => {
+              const key = ymd(d);
+              const active = day === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => {
+                    setWhen(i === 0 ? "today" : i === 1 ? "tomorrow" : "day");
+                    setDay(key);
+                  }}
+                  className={cn(
+                    "flex h-14 w-14 shrink-0 flex-col items-center justify-center rounded-2xl text-xs font-semibold",
+                    active ? "bg-fg text-bg" : "bg-bg text-muted shadow-[var(--sd-card-shadow)]",
+                  )}
+                >
+                  <span>{i === 0 ? t("add.today") : format(d, "EEE")}</span>
+                  <span className="text-sm tabular-nums">{format(d, "d")}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {TIME_CHIPS.map((row) => (
+              <button
+                key={row.labelKey}
+                type="button"
+                onClick={() => setHour(row.h)}
+                className={cn(
+                  "h-10 rounded-full px-3 text-xs font-semibold",
+                  hour === row.h ? "bg-primary text-primary-fg" : "bg-bg text-muted shadow-[var(--sd-card-shadow)]",
+                )}
+              >
+                {t(row.labelKey) === row.labelKey ? row.fallback : t(row.labelKey)}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       <button
         type="button"
@@ -238,7 +263,6 @@ export function QuickAdd({
 
       <div className="mt-4">
         <p className="mb-2 text-xs font-semibold tracking-[0.14em] text-muted uppercase">{t("add.category")}</p>
-        <p className="mb-2 text-xs text-muted">{t("add.catHint")}</p>
         <div className="flex flex-wrap gap-2">
           {categories.map((c) => (
             <button
@@ -265,12 +289,7 @@ export function QuickAdd({
             }
           }}
         >
-          <Input
-            value={newCat}
-            onChange={(e) => setNewCat(e.target.value)}
-            placeholder={t("add.newCategory")}
-            className="h-10"
-          />
+          <Input value={newCat} onChange={(e) => setNewCat(e.target.value)} placeholder={t("add.newCategory")} className="h-10" />
           <Button type="submit" variant="secondary" disabled={!newCat.trim()}>
             {t("settings.add")}
           </Button>

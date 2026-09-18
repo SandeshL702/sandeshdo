@@ -16,7 +16,7 @@ export interface ParsedTask {
 }
 
 const PREFIX =
-  /^(?:please\s+)?(?:remind me to|remind me|remember to|don't forget to|dont forget to|i need to|i have to|todo:?|task:?)\s+/i;
+  /^(?:please\s+)?(?:remind me to|remind me|remember to|don't forget to|dont forget to|i need to|i have to|todo:?|task:?|yaad rakh|yaad dilana|mujhe yaad|add karo?|kaam hai)\s+/i;
 
 const DURATION_RE = /\b(?:for\s+)?(\d+)\s*(minutes?|mins?|hours?|hrs?)\b/i;
 const RELATIVE_IN_RE = /\bin\s+(\d+)\s*(minutes?|mins?|hours?|hrs?)\b/i;
@@ -158,6 +158,28 @@ function extractTime(text: string): {
     return { text: atH.text, hour, minute: 0, label: formatTimeLabel(hour, 0) };
   }
 
+  const baje = stripOnce(
+    text,
+    /\b(\d{1,2})(?:[:.](\d{2}))?\s*(?:baje|bajey|bajkar|pe)\b(?:\s*(subah|shaam|sham|raat|dopahar|subah))?/i,
+  );
+  if (baje.match) {
+    let hour = Number(baje.match[1]);
+    const minute = baje.match[2] ? Number(baje.match[2]) : 0;
+    const slot = (baje.match[3] ?? "").toLowerCase();
+    if (slot === "shaam" || slot === "sham" || slot === "raat") {
+      if (hour < 12) hour += 12;
+    } else if (slot === "subah" && hour === 12) hour = 0;
+    else if (!slot) hour = parseHour(hour, null);
+    return { text: baje.text, hour, minute, label: formatTimeLabel(hour, minute) };
+  }
+
+  const slotOnly = stripOnce(text, /\b(subah|shaam|sham|dopahar|raat)\b/i);
+  if (slotOnly.match) {
+    const slot = slotOnly.match[1].toLowerCase();
+    const hour = slot === "subah" ? 8 : slot === "dopahar" ? 13 : slot === "raat" ? 21 : 18;
+    return { text: slotOnly.text, hour, minute: 0, label: formatTimeLabel(hour, 0) };
+  }
+
   return null;
 }
 
@@ -225,7 +247,7 @@ export function parseNaturalLanguage(input: string, now = Date.now()): ParsedTas
     text = text.replace(relative[0], " ").replace(/\s+/g, " ").trim();
   }
 
-  const tomorrow = text.match(/\btomorrow\b/i);
+  const tomorrow = text.match(/\b(tomorrow|kal)\b/i);
   if (tomorrow) {
     due = addDays(new Date(now), 1);
     dateLabel = "Tomorrow";
@@ -233,13 +255,22 @@ export function parseNaturalLanguage(input: string, now = Date.now()): ParsedTas
     text = text.replace(tomorrow[0], " ").replace(/\s+/g, " ").trim();
   }
 
-  const today = text.match(/\b(today|tonight)\b/i);
+  const parso = text.match(/\bparso\b/i);
+  if (parso && !explicitDate) {
+    due = addDays(new Date(now), 2);
+    dateLabel = "Day after";
+    explicitDate = true;
+    text = text.replace(parso[0], " ").replace(/\s+/g, " ").trim();
+  }
+
+  const today = text.match(/\b(today|tonight|aaj)\b/i);
   if (today && !explicitDate) {
     due = new Date(now);
-    dateLabel = today[1].toLowerCase() === "tonight" ? "Tonight" : "Today";
+    const word = today[1].toLowerCase();
+    dateLabel = word === "tonight" ? "Tonight" : "Today";
     explicitDate = true;
     text = text.replace(today[0], " ").replace(/\s+/g, " ").trim();
-    if (today[1].toLowerCase() === "tonight" && !extractTime(text)) {
+    if (word === "tonight" && !extractTime(text)) {
       due = applyTime(due, 20, 0);
       timeLabel = "8:00 PM";
       explicitTime = true;

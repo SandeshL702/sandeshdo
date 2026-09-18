@@ -147,6 +147,7 @@ export interface Settings {
   geminiApiKey?: string;
   notifyRev?: number;
   demoRev?: number;
+  pinHash?: string;
 }
 
 export interface BackupFile {
@@ -163,6 +164,9 @@ export interface BackupFile {
   budgets?: Budget[];
   moneyCategories?: MoneyCategory[];
   game?: GameProgress;
+  notes?: Note[];
+  plans?: Plan[];
+  vault?: VaultItem[];
 }
 
 export type TxType = "income" | "expense";
@@ -182,6 +186,37 @@ export interface Transaction {
   note: string;
   at: number;
   account: "cash" | "bank";
+}
+
+export type NoteColor = "paper" | "teal" | "sand" | "rose";
+
+export interface Note {
+  id: string;
+  title: string;
+  body: string;
+  color: NoteColor;
+  pinned: boolean;
+  updatedAt: number;
+}
+
+export interface Plan {
+  id: string;
+  title: string;
+  note: string;
+  when: number | null;
+  cost: number | null;
+  done: boolean;
+  createdAt: number;
+}
+
+export type VaultKind = "password" | "pin" | "card" | "note";
+
+export interface VaultItem {
+  id: string;
+  kind: VaultKind;
+  label: string;
+  secret: string;
+  updatedAt: number;
 }
 
 export interface Budget {
@@ -260,6 +295,7 @@ export const DEFAULT_SETTINGS: Settings = {
   geminiApiKey: "",
   notifyRev: 19,
   demoRev: 19,
+  pinHash: "",
 };
 
 export const SNOOZE_PRESETS = [

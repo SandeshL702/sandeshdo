@@ -5,11 +5,14 @@ import type {
   Completion,
   GameProgress,
   MoneyCategory,
+  Note,
+  Plan,
   Reminder,
   Settings,
   Subtask,
   Task,
   Transaction,
+  VaultItem,
 } from "./types";
 
 export interface Snapshot {
@@ -23,6 +26,9 @@ export interface Snapshot {
   budgets?: Budget[];
   moneyCategories?: MoneyCategory[];
   game?: GameProgress;
+  notes?: Note[];
+  plans?: Plan[];
+  vault?: VaultItem[];
 }
 
 const FILE_KEY = "sandeshdo-file-backup";
@@ -42,6 +48,9 @@ export function buildBackup(snap: Snapshot): BackupFile {
     budgets: snap.budgets ?? [],
     moneyCategories: snap.moneyCategories ?? [],
     game: snap.game,
+    notes: snap.notes ?? [],
+    plans: snap.plans ?? [],
+    vault: snap.vault ?? [],
   };
 }
 

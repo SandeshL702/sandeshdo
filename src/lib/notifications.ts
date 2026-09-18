@@ -22,6 +22,10 @@ declare global {
       requestNotifyPermission?: () => void;
       openAppSettings?: () => void;
       openOemAutostart?: () => void;
+      openNotificationSettings?: () => void;
+      seedNotification?: () => void;
+      hideSplash?: () => void;
+      askGemini?: (key: string, prompt: string) => string;
       alertHealth?: () => string;
       pinToday?: (json: string) => void;
       saveBackup?: (json: string) => string;
@@ -61,11 +65,33 @@ export async function ensureNotificationPermission(): Promise<boolean> {
       /* native optional */
     }
   }
-  if (typeof window === "undefined" || !("Notification" in window)) return Boolean(host);
-  if (Notification.permission === "granted") return true;
+  if (typeof window === "undefined" || !("Notification" in window)) {
+    try {
+      host?.seedNotification?.();
+    } catch {
+      /* native */
+    }
+    return Boolean(host);
+  }
+  if (Notification.permission === "granted") {
+    try {
+      host?.seedNotification?.();
+    } catch {
+      /* native */
+    }
+    return true;
+  }
   if (Notification.permission === "denied") return Boolean(host);
   const result = await Notification.requestPermission();
-  return result === "granted" || Boolean(host);
+  const ok = result === "granted" || Boolean(host);
+  if (ok) {
+    try {
+      host?.seedNotification?.();
+    } catch {
+      /* native */
+    }
+  }
+  return ok;
 }
 
 export function canNotify(): boolean {

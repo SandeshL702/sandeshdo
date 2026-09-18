@@ -2,8 +2,8 @@
 <resources>
     <style name="Theme.SandeshDo" parent="Theme.AppCompat.DayNight.NoActionBar">
         <item name="android:statusBarColor">#0B6B58</item>
-        <item name="android:navigationBarColor">#ECE8DF</item>
-        <item name="android:windowBackground">#ECE8DF</item>
+        <item name="android:navigationBarColor">#0B6B58</item>
+        <item name="android:windowBackground">#0B6B58</item>
         <item name="colorPrimary">#0B6B58</item>
     </style>
     <style name="Theme.SandeshDo.Alert" parent="Theme.AppCompat.NoActionBar">

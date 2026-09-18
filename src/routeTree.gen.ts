@@ -13,9 +13,13 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as CalendarRouteImport } from './routes/calendar'
 import { Route as FocusRouteImport } from './routes/focus'
 import { Route as MoneyRouteImport } from './routes/money'
+import { Route as MoreRouteImport } from './routes/more'
+import { Route as NotesRouteImport } from './routes/notes'
+import { Route as PlansRouteImport } from './routes/plans'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as StatsRouteImport } from './routes/stats'
 import { Route as TasksRouteImport } from './routes/tasks'
+import { Route as VaultRouteImport } from './routes/vault'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -37,6 +41,21 @@ const MoneyRoute = MoneyRouteImport.update({
   path: '/money',
   getParentRoute: () => rootRouteImport,
 } as any)
+const MoreRoute = MoreRouteImport.update({
+  id: '/more',
+  path: '/more',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const NotesRoute = NotesRouteImport.update({
+  id: '/notes',
+  path: '/notes',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PlansRoute = PlansRouteImport.update({
+  id: '/plans',
+  path: '/plans',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -52,24 +71,37 @@ const TasksRoute = TasksRouteImport.update({
   path: '/tasks',
   getParentRoute: () => rootRouteImport,
 } as any)
+const VaultRoute = VaultRouteImport.update({
+  id: '/vault',
+  path: '/vault',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/calendar': typeof CalendarRoute
   '/focus': typeof FocusRoute
   '/money': typeof MoneyRoute
+  '/more': typeof MoreRoute
+  '/notes': typeof NotesRoute
+  '/plans': typeof PlansRoute
   '/settings': typeof SettingsRoute
   '/stats': typeof StatsRoute
   '/tasks': typeof TasksRoute
+  '/vault': typeof VaultRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/calendar': typeof CalendarRoute
   '/focus': typeof FocusRoute
   '/money': typeof MoneyRoute
+  '/more': typeof MoreRoute
+  '/notes': typeof NotesRoute
+  '/plans': typeof PlansRoute
   '/settings': typeof SettingsRoute
   '/stats': typeof StatsRoute
   '/tasks': typeof TasksRoute
+  '/vault': typeof VaultRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -77,26 +109,54 @@ export interface FileRoutesById {
   '/calendar': typeof CalendarRoute
   '/focus': typeof FocusRoute
   '/money': typeof MoneyRoute
+  '/more': typeof MoreRoute
+  '/notes': typeof NotesRoute
+  '/plans': typeof PlansRoute
   '/settings': typeof SettingsRoute
   '/stats': typeof StatsRoute
   '/tasks': typeof TasksRoute
+  '/vault': typeof VaultRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/calendar' | '/focus' | '/money' | '/settings' | '/stats' | '/tasks'
+    | '/'
+    | '/calendar'
+    | '/focus'
+    | '/money'
+    | '/more'
+    | '/notes'
+    | '/plans'
+    | '/settings'
+    | '/stats'
+    | '/tasks'
+    | '/vault'
   fileRoutesByTo: FileRoutesByTo
   to:
-    '/' | '/calendar' | '/focus' | '/money' | '/settings' | '/stats' | '/tasks'
+    | '/'
+    | '/calendar'
+    | '/focus'
+    | '/money'
+    | '/more'
+    | '/notes'
+    | '/plans'
+    | '/settings'
+    | '/stats'
+    | '/tasks'
+    | '/vault'
   id:
     | '__root__'
     | '/'
     | '/calendar'
     | '/focus'
     | '/money'
+    | '/more'
+    | '/notes'
+    | '/plans'
     | '/settings'
     | '/stats'
     | '/tasks'
+    | '/vault'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -104,9 +164,13 @@ export interface RootRouteChildren {
   CalendarRoute: typeof CalendarRoute
   FocusRoute: typeof FocusRoute
   MoneyRoute: typeof MoneyRoute
+  MoreRoute: typeof MoreRoute
+  NotesRoute: typeof NotesRoute
+  PlansRoute: typeof PlansRoute
   SettingsRoute: typeof SettingsRoute
   StatsRoute: typeof StatsRoute
   TasksRoute: typeof TasksRoute
+  VaultRoute: typeof VaultRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -139,6 +203,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof MoneyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/more': {
+      id: '/more'
+      path: '/more'
+      fullPath: '/more'
+      preLoaderRoute: typeof MoreRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/notes': {
+      id: '/notes'
+      path: '/notes'
+      fullPath: '/notes'
+      preLoaderRoute: typeof NotesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/plans': {
+      id: '/plans'
+      path: '/plans'
+      fullPath: '/plans'
+      preLoaderRoute: typeof PlansRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -160,6 +245,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof TasksRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/vault': {
+      id: '/vault'
+      path: '/vault'
+      fullPath: '/vault'
+      preLoaderRoute: typeof VaultRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -168,9 +260,13 @@ const rootRouteChildren: RootRouteChildren = {
   CalendarRoute: CalendarRoute,
   FocusRoute: FocusRoute,
   MoneyRoute: MoneyRoute,
+  MoreRoute: MoreRoute,
+  NotesRoute: NotesRoute,
+  PlansRoute: PlansRoute,
   SettingsRoute: SettingsRoute,
   StatsRoute: StatsRoute,
   TasksRoute: TasksRoute,
+  VaultRoute: VaultRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

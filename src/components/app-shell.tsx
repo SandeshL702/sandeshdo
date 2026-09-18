@@ -17,6 +17,7 @@ import { useT } from "@/lib/i18n";
 import type { TxType } from "@/lib/types";
 import { Splash } from "@/components/splash";
 import { Assistant } from "@/components/assistant";
+import { AppLock } from "@/components/app-lock";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { t } = useT();
@@ -262,6 +263,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       setMoneyOpen(true);
       return;
     }
+    if (pathname.startsWith("/notes")) {
+      window.dispatchEvent(new Event("sandeshdo:assistant"));
+      return;
+    }
     setPrefill("");
     setPrefillDate("");
     setPrefillWhen(pathname === "/" ? "today" : "");
@@ -271,6 +276,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-dvh bg-bg text-fg" suppressHydrationWarning>
       <Splash />
+      <AppLock />
       <div className="relative mx-auto flex min-h-dvh w-full max-w-xl flex-col lg:border-x lg:border-border">
         <div className="flex-1 pb-28 pt-[env(safe-area-inset-top)]">{children}</div>
         <nav className="pointer-events-none fixed bottom-0 left-1/2 z-30 w-full max-w-xl -translate-x-1/2 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))]">

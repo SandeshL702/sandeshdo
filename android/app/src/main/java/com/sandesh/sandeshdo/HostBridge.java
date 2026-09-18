@@ -29,6 +29,9 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.net.URLEncoder;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -100,9 +103,13 @@ public class HostBridge {
 
     @JavascriptInterface
     public void fireNow(String title) {
+        String t = title == null || title.isEmpty() ? "Pay electricity bill" : title;
+        AlarmService.postHeadsUp(ctx, "test", t, "Test banner · app can be closed", true);
+        AlertChime.play(ctx);
+        AlertReceiver.vibrate(ctx);
         Intent i = new Intent(ctx, AlarmService.class);
-        i.putExtra("title", title == null || title.isEmpty() ? "Pay electricity bill" : title);
-        i.putExtra("body", "Test alert · lock screen popup");
+        i.putExtra("title", t);
+        i.putExtra("body", "Test banner · app can be closed");
         i.putExtra("overdue", true);
         i.putExtra("taskId", "test");
         i.putExtra("repeatMin", 0);
@@ -112,14 +119,7 @@ public class HostBridge {
             } else {
                 ctx.startService(i);
             }
-        } catch (Exception e) {
-            Intent a = new Intent(ctx, AlertActivity.class);
-            a.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            a.putExtra("title", title == null || title.isEmpty() ? "Pay electricity bill" : title);
-            a.putExtra("body", "Test alert · lock screen popup");
-            a.putExtra("overdue", true);
-            a.putExtra("taskId", "test");
-            ctx.startActivity(a);
+        } catch (Exception ignored) {
         }
     }
 
@@ -194,6 +194,98 @@ public class HostBridge {
         i.setData(Uri.parse("package:" + ctx.getPackageName()));
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         ctx.startActivity(i);
+    }
+
+    @JavascriptInterface
+    public void openNotificationSettings() {
+        try {
+            Intent i = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS);
+            i.putExtra(Settings.EXTRA_APP_PACKAGE, ctx.getPackageName());
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            ctx.startActivity(i);
+        } catch (Exception e) {
+            openAppSettings();
+        }
+    }
+
+    @JavascriptInterface
+    public void seedNotification() {
+        AlarmService.seedHeadsUp(ctx);
+    }
+
+    @JavascriptInterface
+    public void hideSplash() {
+        Activity a = activity.get();
+        if (a instanceof MainActivity) {
+            a.runOnUiThread(((MainActivity) a)::hideSplash);
+        }
+    }
+
+    @JavascriptInterface
+    public String askGemini(String key, String prompt) {
+        if (key == null || key.trim().isEmpty() || prompt == null || prompt.trim().isEmpty()) {
+            return "ERR:missing";
+        }
+        String[] models =
+                new String[] {"gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-flash-latest"};
+        String last = "ERR:no model";
+        for (String model : models) {
+            try {
+                String url =
+                        "https://generativelanguage.googleapis.com/v1beta/models/"
+                                + model
+                                + ":generateContent?key="
+                                + URLEncoder.encode(key.trim(), "UTF-8");
+                JSONObject body = new JSONObject();
+                JSONArray contents = new JSONArray();
+                JSONObject user = new JSONObject();
+                user.put("role", "user");
+                JSONArray parts = new JSONArray();
+                JSONObject part = new JSONObject();
+                part.put("text", prompt);
+                parts.put(part);
+                user.put("parts", parts);
+                contents.put(user);
+                body.put("contents", contents);
+                JSONObject gen = new JSONObject();
+                gen.put("temperature", 0.3);
+                gen.put("maxOutputTokens", 500);
+                gen.put("responseMimeType", "application/json");
+                body.put("generationConfig", gen);
+
+                HttpURLConnection conn = (HttpURLConnection) new URL(url).openConnection();
+                conn.setRequestMethod("POST");
+                conn.setRequestProperty("Content-Type", "application/json");
+                conn.setConnectTimeout(12000);
+                conn.setReadTimeout(20000);
+                conn.setDoOutput(true);
+                OutputStream os = conn.getOutputStream();
+                os.write(body.toString().getBytes(StandardCharsets.UTF_8));
+                os.close();
+                int code = conn.getResponseCode();
+                InputStream in = code >= 200 && code < 300 ? conn.getInputStream() : conn.getErrorStream();
+                String raw = in != null ? readStream(in) : "";
+                conn.disconnect();
+                if (code >= 200 && code < 300) {
+                    JSONObject res = new JSONObject(raw);
+                    JSONArray cands = res.optJSONArray("candidates");
+                    if (cands != null && cands.length() > 0) {
+                        JSONObject content = cands.getJSONObject(0).optJSONObject("content");
+                        if (content != null) {
+                            JSONArray outParts = content.optJSONArray("parts");
+                            if (outParts != null && outParts.length() > 0) {
+                                String text = outParts.getJSONObject(0).optString("text", "");
+                                if (text.length() > 0) return text;
+                            }
+                        }
+                    }
+                }
+                last = "ERR:" + code;
+            } catch (Exception e) {
+                last = "ERR:" + (e.getMessage() == null ? "net" : e.getMessage());
+            }
+        }
+        return last;
     }
 
     @JavascriptInterface

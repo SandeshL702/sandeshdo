@@ -88,3 +88,17 @@ test("got 15000 salary is income", () => {
   assert.equal(m.amount, 15000);
   assert.equal(m.type, "income");
 });
+
+test("hinglish kal 5 baje sets a deadline", () => {
+  const p = parseNaturalLanguage("kal 5 baje dentist", NOW);
+  assert.match(p.title.toLowerCase(), /dentist/);
+  assert.ok(p.dueAt);
+  const d = new Date(p.dueAt);
+  assert.equal(d.getDate(), 17);
+  assert.equal(d.getHours(), 17);
+});
+
+test("hinglish yaad rakh prefix", () => {
+  const p = parseNaturalLanguage("yaad rakh bill bharna aaj", NOW);
+  assert.match(p.title.toLowerCase(), /bill/);
+});

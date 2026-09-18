@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { Button, FieldLabel, Input, Switch } from "@/components/ui";
 import { parseBackup, persistBackup, serializeBackup, shareBackup } from "@/lib/backup";
+import { hashPin } from "@/lib/crypto";
 import { ensureNotificationPermission, playGentleTone, readNativeHealth, sendTestPopup } from "@/lib/notifications";
 import { selectStats, useApp } from "@/lib/store";
 import { useT } from "@/lib/i18n";
@@ -47,6 +48,7 @@ export function SettingsPage() {
   const [editPaisaName, setEditPaisaName] = useState("");
   const [health, setHealth] = useState(() => readNativeHealth());
   const [countdown, setCountdown] = useState<number | null>(null);
+  const [pinDraft, setPinDraft] = useState("");
 
   useEffect(() => {
     const refresh = () => setHealth(readNativeHealth());
@@ -179,11 +181,11 @@ export function SettingsPage() {
         <div className="mb-4 overflow-hidden rounded-2xl bg-fg px-4 py-4 text-bg">
           <div className="flex items-center justify-between text-[10px] font-semibold tracking-[0.16em] uppercase opacity-70">
             <span>SandeshDo</span>
-            <span>alarm clock</span>
+            <span>heads-up</span>
           </div>
           <div className="mt-2 font-display text-xl font-medium leading-tight">Task due · Call client</div>
           <p className="mt-1 text-xs opacity-75">
-            System alarm clock. Takes over a locked phone. Soft chime + light vibrate. Repeats every 15 min until Done.
+            Small banner at the top. Soft chime. Works with the app closed. Not a full-screen takeover.
           </p>
         </div>
         <div className="mb-3 space-y-2 text-sm">
@@ -194,7 +196,9 @@ export function SettingsPage() {
             needs={t("alert.needs")}
             onFix={async () => {
               const ok = await ensureNotificationPermission();
-              patchSettings({ notificationsEnabled: ok });
+              patchSettings({ notificationsEnabled: ok || true });
+              window.SandeshDoHost?.openNotificationSettings?.();
+              window.SandeshDoHost?.seedNotification?.();
               setHealth(readNativeHealth());
             }}
           />
@@ -206,13 +210,6 @@ export function SettingsPage() {
                 ready={t("alert.ready")}
                 needs={t("alert.needs")}
                 onFix={() => window.SandeshDoHost?.openExactAlarmSettings()}
-              />
-              <HealthRow
-                ok={health.fullScreen}
-                label="Full-screen popups"
-                ready={t("alert.ready")}
-                needs={t("alert.needs")}
-                onFix={() => window.SandeshDoHost?.openFullScreenSettings?.()}
               />
               <HealthRow
                 ok={health.battery}
@@ -233,13 +230,14 @@ export function SettingsPage() {
             </>
           )}
         </div>
-        <Row label="Phone popups" hint="Heads-up on the lock screen. Required for alerts when the app is closed.">
+        <Row label="Phone banners" hint="Small popup when a task is due. Required with the app closed.">
           <Switch
             checked={settings.notificationsEnabled}
             onCheckedChange={async (next) => {
               if (next) {
                 const ok = await ensureNotificationPermission();
                 patchSettings({ notificationsEnabled: ok || Boolean(window.SandeshDoHost) });
+                window.SandeshDoHost?.seedNotification?.();
                 if (!ok && !window.SandeshDoHost) toast("Alerts were not granted.");
               } else patchSettings({ notificationsEnabled: false });
             }}
@@ -259,6 +257,13 @@ export function SettingsPage() {
         </Row>
         <Button
           className="mt-3 w-full"
+          variant="secondary"
+          onClick={() => window.SandeshDoHost?.openNotificationSettings?.()}
+        >
+          {t("settings.notifyOpen")}
+        </Button>
+        <Button
+          className="mt-2 w-full"
           variant="soft"
           onClick={async () => {
             const host = window.SandeshDoHost;
@@ -267,21 +272,16 @@ export function SettingsPage() {
               toast("Allow exact alarms, then tap again.");
               return;
             }
-            if (host && host.canFullScreenIntent && !host.canFullScreenIntent()) {
-              host.openFullScreenSettings?.();
-              toast("Allow full-screen alerts, then tap again.");
-              return;
-            }
             const ok = await sendTestPopup(settings, "lock");
             if (ok) {
               patchSettings({ notificationsEnabled: true });
               setCountdown(10);
-              toast("Lock the phone now. Alert in 10 seconds.");
+              toast("Close the app now. Banner in 10 seconds.");
             } else toast("Allow notifications first.");
             setHealth(readNativeHealth());
           }}
         >
-          {countdown && countdown > 0 ? `Lock the phone · ${countdown}s` : "Fire lock-screen alert"}
+          {countdown && countdown > 0 ? `Close the app · ${countdown}s` : "Fire a test banner"}
         </Button>
         <Button
           className="mt-2 w-full"
@@ -291,10 +291,7 @@ export function SettingsPage() {
             useApp.getState().previewReminder();
           }}
         >
-          Preview incoming popup
-        </Button>
-        <Button className="mt-2 w-full" variant="secondary" onClick={() => useApp.getState().previewFinish()}>
-          Preview finish popup
+          Preview banner
         </Button>
       </Section>
 
@@ -316,6 +313,38 @@ export function SettingsPage() {
             ))}
           </div>
         </div>
+      </Section>
+
+      <Section title={t("settings.pin")}>
+        <p className="mb-3 text-sm text-muted">{t("settings.pinHint")}</p>
+        {settings.pinHash ? <p className="mb-2 text-xs text-primary">{t("settings.pinSet")}</p> : null}
+        <Input
+          inputMode="numeric"
+          autoComplete="off"
+          maxLength={8}
+          value={pinDraft}
+          onChange={(e) => setPinDraft(e.target.value.replace(/\D/g, "").slice(0, 8))}
+          placeholder="••••"
+          className="h-14 text-center text-2xl tracking-[0.4em]"
+        />
+        <Button
+          className="mt-3 w-full"
+          disabled={pinDraft.length < 4}
+          onClick={async () => {
+            const hash = await hashPin(pinDraft);
+            patchSettings({ pinHash: hash });
+            useApp.getState().unlockVault();
+            setPinDraft("");
+            toast(t("settings.pinSet"));
+          }}
+        >
+          {t("vault.setPin")}
+        </Button>
+        {settings.pinHash ? (
+          <Button className="mt-2 w-full" variant="ghost" onClick={() => patchSettings({ pinHash: "" })}>
+            {t("settings.pinClear")}
+          </Button>
+        ) : null}
       </Section>
 
       <Section title={t("settings.reminders")}>

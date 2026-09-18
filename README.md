@@ -4,54 +4,48 @@
 
 Private, offline-first tasks + KhataBook-style money. Made by [Sandesh](https://github.com/SandeshL702).
 
-SandeshDo is a phone app for capturing work, remembering it with lock-screen alarms (even when the app is closed), finishing it, and keeping paisa honest.
+SandeshDo is a phone app for capturing work, remembering it with heads-up banners (even when the app is closed), finishing it, and keeping paisa honest.
 
 ## What’s in the app
 
 - **Tasks** — today, overdue, inbox, calendar (Google Calendar–style month), search, categories
-- **Paisa** — Got / Spent cashbook, budgets, freelance + client income categories, add your own
-- **Report** — week chart, month in/out, category analysis
-- **Alerts** — Android `AlarmClock` + full-screen popup, soft chime, light vibrate. Works with the app closed once permissions are allowed
-- **Ask SandeshDo** — type or speak. Optional Google Gemini API key in Settings. Local commands work without a key
-- **Backup** — JSON file on the phone. Uninstall and restore
+- **Paisa** — Got / Spent cashbook, budgets, per-day spend graph, freelance + client income categories
+- **Notes / Plans / Vault** — Keep-style notes, long-term plans, PIN-gated passwords. Separate pages, not crammed into Tasks
+- **Sandy** — talks Hinglish, adds tasks with deadlines, logs paisa, notes, plans. Optional Gemini key
+- **Report** — week chart, month in/out, daily spend, category analysis
+- **Alerts** — Android alarm clock + small heads-up banner, soft chime. Works with the app closed
+- **Backup** — JSON on the phone. Share to Drive. Uninstall and restore. PIN locks the app
 - **English / Hinglish** — default English
 
 No accounts. Data stays on the device.
 
 ## Android APK
 
-Package: `com.sandesh.sandeshdo`
+Package: `com.sandesh.sandeshdo` · **2.0.0**
 
-Install the APK, then **Allow the 4 alert permissions** (notifications, exact alarms, full-screen popup, ignore battery). On Xiaomi / Vivo / Oppo also turn **Autostart** on.
+Install the APK, then **Allow notifications** and **exact alarms**. On Xiaomi / Vivo / Oppo also turn **Autostart** on.
 
 Updating: install the new APK over the same package. Your data stays.
 
-## Ask SandeshDo (optional Gemini)
+## Sandy (optional Gemini)
 
 1. Open [Google AI Studio](https://aistudio.google.com/apikey) and create a Gemini API key
-2. SandeshDo → Settings → Google AI → paste the key
-3. Tap the sparkles icon (or Ask SandeshDo) — type or hold the mic
+2. SandeshDo → Settings → Sandy · Google AI → paste the key
+3. Tap the sparkles — type or hold the mic. Try `kal 5 baje dentist`
 
-Without a key you can still say things like:
+Without a key you can still say:
 
-- `Call Rahul tomorrow 5pm`
+- `kal 5 baje Rahul ko call`
 - `got 500 freelance`
-- `spent 80 chai`
-- `what’s pending`
+- `gaya 80 chai`
+- `note laptop bill`
+- `plan Mahakumbh`
 
-The key is stored only on the phone. Shared backups strip it.
-
-## Develop
-
-```bash
-npm install
-npm run dev
-```
-
-Android wrapper lives in `android/`. Release signing uses the project keystore so updates overlay the same package.
+The key is stored only on the phone. The APK calls Gemini natively (no CORS). Shared backups strip it.
 
 ## Privacy
 
 - No sign-in
 - Zustand persist (`sandeshdo-v2`) + optional native backup
 - Gemini is called from the device with *your* key only if you paste one
+- Vault secrets never leave the phone

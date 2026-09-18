@@ -11,6 +11,18 @@ import { cn } from "@/lib/utils";
 
 type Line = { role: "you" | "do"; text: string };
 
+const GO: Record<string, "/" | "/calendar" | "/money" | "/settings" | "/stats" | "/notes" | "/plans" | "/vault" | "/more"> = {
+  "go:tasks": "/",
+  "go:calendar": "/calendar",
+  "go:money": "/money",
+  "go:settings": "/settings",
+  "go:report": "/stats",
+  "go:notes": "/notes",
+  "go:plans": "/plans",
+  "go:vault": "/vault",
+  "go:more": "/more",
+};
+
 export function Assistant({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t, locale } = useT();
   const navigate = useNavigate();
@@ -18,6 +30,8 @@ export function Assistant({ open, onClose }: { open: boolean; onClose: () => voi
   const completeTask = useApp((s) => s.completeTask);
   const snoozeTask = useApp((s) => s.snoozeTask);
   const addTx = useApp((s) => s.addTx);
+  const addNote = useApp((s) => s.addNote);
+  const addPlan = useApp((s) => s.addPlan);
   const apiKey = useApp((s) => s.settings.geminiApiKey ?? "");
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -40,25 +54,21 @@ export function Assistant({ open, onClose }: { open: boolean; onClose: () => voi
   }, [lines, busy]);
 
   const apply = (result: AssistantResult) => {
+    const state = useApp.getState();
     const notes = executeActions(result.actions, {
       addTask,
       completeTask,
       snoozeTask,
       addTx,
-      tasks: useApp.getState().tasks,
-      moneyCategories: useApp.getState().moneyCategories,
+      addNote,
+      addPlan,
+      tasks: state.tasks,
+      moneyCategories: state.moneyCategories,
     });
     const go = notes.find((n) => n.startsWith("go:"));
     const speak = notes.filter((n) => !n.startsWith("go:"));
-    const map = {
-      "go:tasks": "/",
-      "go:calendar": "/calendar",
-      "go:money": "/money",
-      "go:settings": "/settings",
-      "go:report": "/stats",
-    } as const;
-    if (go && go in map) {
-      void navigate({ to: map[go as keyof typeof map] });
+    if (go && go in GO) {
+      void navigate({ to: GO[go] });
       onClose();
     }
     const say = [result.say, ...speak].filter(Boolean).join(" ");
@@ -72,10 +82,13 @@ export function Assistant({ open, onClose }: { open: boolean; onClose: () => voi
     setLines((cur) => [...cur, { role: "you", text: prompt }]);
     setBusy(true);
     try {
+      const state = useApp.getState();
       const result = await runAssistant(prompt, apiKey, {
-        tasks: useApp.getState().tasks,
-        transactions: useApp.getState().transactions,
-        moneyCategories: useApp.getState().moneyCategories,
+        tasks: state.tasks,
+        transactions: state.transactions,
+        moneyCategories: state.moneyCategories,
+        notes: state.notes,
+        plans: state.plans,
       });
       apply(result);
     } catch {
@@ -145,9 +158,7 @@ export function Assistant({ open, onClose }: { open: boolean; onClose: () => voi
           <Send className="size-4" />
         </Button>
       </form>
-      <p className="mt-3 text-xs text-muted">
-        {apiKey.trim() ? t("ai.hintKey") : t("ai.hintLocal")}
-      </p>
+      <p className="mt-3 text-xs text-muted">{apiKey.trim() ? t("ai.hintKey") : t("ai.hintLocal")}</p>
     </Sheet>
   );
 }

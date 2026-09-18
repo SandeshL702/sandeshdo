@@ -4,7 +4,7 @@ import { format, startOfDay, subDays } from "date-fns";
 import { BrandMark } from "@/components/brand-mark";
 import { HeaderActions } from "@/components/header-actions";
 import { selectStats, useApp } from "@/lib/store";
-import { formatInr, moneyCatLabel, monthKey, monthTotals } from "@/lib/money";
+import { formatInr, moneyCatLabel, monthKey, monthTotals, spendByDay } from "@/lib/money";
 import { dayKey } from "@/lib/time";
 import { liveStatus } from "@/lib/engine";
 import { useT } from "@/lib/i18n";
@@ -23,6 +23,8 @@ export function ReportPage() {
   const now = Date.now();
   const stats = useMemo(() => selectStats(tasks, completions, now), [tasks, completions, now]);
   const money = useMemo(() => monthTotals(transactions), [transactions]);
+  const daily = useMemo(() => spendByDay(transactions, 14), [transactions]);
+  const maxDaySpend = Math.max(1, ...daily.map((d) => d.spent));
   const week = useMemo(() => {
     return Array.from({ length: 7 }, (_, i) => {
       const day = subDays(startOfDay(now), 6 - i);
@@ -81,6 +83,22 @@ export function ReportPage() {
                 />
               </div>
               <span className="text-micro font-semibold text-subtle">{d.label}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="mt-6">
+        <h2 className="text-micro font-semibold tracking-[0.14em] text-muted uppercase">{t("money.daily")}</h2>
+        <div className="mt-3 flex h-32 items-end gap-1">
+          {daily.map((d) => (
+            <div key={d.key} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+              <div className="flex h-24 w-full items-end justify-center">
+                <div
+                  className="w-full max-w-4 rounded-t-md bg-fg/70"
+                  style={{ height: `${Math.max(4, Math.round((d.spent / maxDaySpend) * 100))}%` }}
+                />
+              </div>
             </div>
           ))}
         </div>

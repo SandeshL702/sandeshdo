@@ -43,8 +43,9 @@ export function AlertSetup() {
 
   if (!native) return null;
 
-  const notifyOk = native ? health.notifications : typeof Notification !== "undefined" && Notification.permission === "granted";
-  const allOk = notifyOk && health.exactAlarms && health.fullScreen && health.battery;
+  const notifyOk =
+    native ? health.notifications : typeof Notification !== "undefined" && Notification.permission === "granted";
+  const allOk = notifyOk && health.exactAlarms && health.battery;
 
   if (allOk) return null;
   if (skipped) {
@@ -57,7 +58,7 @@ export function AlertSetup() {
         <ShieldAlert className="size-4 shrink-0" />
         <span className="min-w-0">
           <span className="block text-sm font-semibold">Alerts are blocked</span>
-          <span className="mt-0.5 block text-xs opacity-80">Tap to allow lock-screen popups</span>
+          <span className="mt-0.5 block text-xs opacity-80">Tap to allow small reminder banners</span>
         </span>
       </button>
     );
@@ -67,10 +68,12 @@ export function AlertSetup() {
     {
       ok: notifyOk,
       label: "Notifications",
-      hint: "Allow banners",
+      hint: "Small banner when a task is due",
       go: async () => {
         const ok = await ensureNotificationPermission();
         patchSettings({ notificationsEnabled: ok || true });
+        window.SandeshDoHost?.openNotificationSettings?.();
+        window.SandeshDoHost?.seedNotification?.();
         setHealth(readNativeHealth());
       },
     },
@@ -79,12 +82,6 @@ export function AlertSetup() {
       label: "Alarms & reminders",
       hint: "Exact time. Required.",
       go: () => window.SandeshDoHost?.openExactAlarmSettings(),
-    },
-    {
-      ok: health.fullScreen,
-      label: "Full-screen popup",
-      hint: "Takes over a locked phone",
-      go: () => window.SandeshDoHost?.openFullScreenSettings?.(),
     },
     {
       ok: health.battery,
@@ -109,11 +106,11 @@ export function AlertSetup() {
     <section className="mb-5 overflow-hidden rounded-[1.75rem] bg-fg px-4 py-4 text-bg shadow-[var(--sd-dock-shadow)]">
       <div className="flex items-center gap-2 text-[10px] font-semibold tracking-[0.16em] uppercase opacity-70">
         <Bell className="size-3.5" />
-        Lock-screen alerts
+        Heads-up banners
       </div>
-      <h2 className="font-display mt-2 text-[1.65rem] leading-tight font-medium">Allow 4 things. Then lock the phone.</h2>
+      <h2 className="font-display mt-2 text-[1.65rem] leading-tight font-medium">Allow banners. App can be closed.</h2>
       <p className="mt-2 text-sm opacity-75">
-        TickTick-grade. System alarm clock. Soft chime + light vibrate. Works with the app closed.
+        A small popup at the top — not a full-screen takeover. Soft chime. Works with the app closed.
       </p>
       <ol className="mt-4 space-y-2">
         {steps.map((s, i) => (
@@ -153,9 +150,9 @@ export function AlertSetup() {
         }}
       >
         {countdown && countdown > 0
-          ? `Lock the phone now · ${countdown}s`
+          ? `Close the app now · ${countdown}s`
           : next.ok
-            ? "Fire lock-screen test"
+            ? "Fire a test banner"
             : `Allow ${next.label}`}
       </Button>
       <button

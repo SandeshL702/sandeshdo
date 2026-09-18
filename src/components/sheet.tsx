@@ -31,29 +31,16 @@ export function Sheet({
   useEffect(() => {
     if (!open) return;
     window.__sdSheetCount = (window.__sdSheetCount ?? 0) + 1;
-    window.history.pushState({ sdSheet: true }, "");
-    let ignorePop = false;
     const close = () => onCloseRef.current();
-    const onPop = () => {
-      if (ignorePop) return;
-      close();
-    };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") close();
     };
-    window.addEventListener("popstate", onPop);
     window.addEventListener("sandeshdo:sheet-back", close);
     window.addEventListener("keydown", onKey);
     return () => {
       window.__sdSheetCount = Math.max(0, (window.__sdSheetCount ?? 1) - 1);
-      window.removeEventListener("popstate", onPop);
       window.removeEventListener("sandeshdo:sheet-back", close);
       window.removeEventListener("keydown", onKey);
-      const st = window.history.state as { sdSheet?: boolean } | null;
-      if (st?.sdSheet) {
-        ignorePop = true;
-        window.history.back();
-      }
     };
   }, [open]);
 
@@ -109,8 +96,7 @@ export function Sheet({
         className={cn(
           "sd-sheet-panel relative flex w-full max-w-xl flex-col overflow-hidden rounded-t-3xl bg-surface text-fg shadow-[var(--sd-dock-shadow)]",
           "sm:mx-4 sm:rounded-3xl",
-          "max-h-[92dvh]",
-          tall ? "min-h-[70dvh]" : "",
+          tall ? "max-h-[88dvh]" : "max-h-[80dvh]",
         )}
       >
         <div className="mx-auto mt-3 h-1 w-10 rounded-full bg-fg/15 sm:hidden" />

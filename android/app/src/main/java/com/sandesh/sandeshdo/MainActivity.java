@@ -8,9 +8,13 @@ import android.graphics.Typeface;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.widget.LinearLayout;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.webkit.PermissionRequest;
 import android.webkit.WebChromeClient;
@@ -24,6 +28,7 @@ import android.widget.TextView;
 import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -40,6 +45,9 @@ public class MainActivity extends AppCompatActivity {
 
     private WebView webView;
     private PermissionRequest pendingWebPermission;
+    private boolean askedNotify;
+    private View splashView;
+    private FrameLayout root;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -47,11 +55,11 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         Window window = getWindow();
         window.setStatusBarColor(Color.parseColor("#0B6B58"));
-        window.setNavigationBarColor(Color.parseColor("#ECE8DF"));
+        window.setNavigationBarColor(Color.parseColor("#0B6B58"));
         WindowCompat.setDecorFitsSystemWindows(window, true);
         WindowInsetsControllerCompat insets = WindowCompat.getInsetsController(window, window.getDecorView());
         insets.setAppearanceLightStatusBars(false);
-        insets.setAppearanceLightNavigationBars(true);
+        insets.setAppearanceLightNavigationBars(false);
 
         if (!webViewAvailable()) {
             setContentView(missingWebViewScreen());
@@ -61,16 +69,28 @@ public class MainActivity extends AppCompatActivity {
         if (Build.VERSION.SDK_INT >= 33
                 && ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
                         != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this, new String[] {Manifest.permission.POST_NOTIFICATIONS}, 7);
+            /* wait for hideSplash — don't flash a permission over the splash */
+        } else {
+            new Handler(Looper.getMainLooper()).postDelayed(() -> AlarmService.seedHeadsUp(this), 1800);
         }
 
         AlarmService.ensureChannel(this);
         AlarmScheduler.scheduleSaved(this);
 
         webView = new WebView(this);
-        webView.setBackgroundColor(Color.parseColor("#ECE8DF"));
+        webView.setBackgroundColor(Color.parseColor("#0B6B58"));
         webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
-        setContentView(webView);
+        root = new FrameLayout(this);
+        root.addView(
+                webView,
+                new FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        splashView = buildSplash();
+        root.addView(
+                splashView,
+                new FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+        setContentView(root);
 
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
@@ -117,6 +137,7 @@ public class MainActivity extends AppCompatActivity {
             bootFromAssets();
         }
         handleOpenTask(getIntent());
+        new Handler(Looper.getMainLooper()).postDelayed(this::hideSplash, 2800);
 
                         getOnBackPressedDispatcher()
                                 .addCallback(
@@ -201,6 +222,84 @@ public class MainActivity extends AppCompatActivity {
         return root;
     }
 
+    private View buildSplash() {
+        FrameLayout splash = new FrameLayout(this);
+        splash.setBackgroundColor(Color.parseColor("#0B6B58"));
+        splash.setClickable(true);
+        LinearLayout col = new LinearLayout(this);
+        col.setOrientation(LinearLayout.VERTICAL);
+        col.setGravity(Gravity.CENTER);
+        TextView title = new TextView(this);
+        title.setText("SandeshDo");
+        title.setTextColor(Color.parseColor("#F6F3EC"));
+        title.setTextSize(TypedValue.COMPLEX_UNIT_SP, 34);
+        title.setTypeface(Typeface.create("serif", Typeface.NORMAL));
+        title.setGravity(Gravity.CENTER);
+        TextView tag = new TextView(this);
+        tag.setText("Remember · Do · Finish");
+        tag.setTextColor(Color.parseColor("#C9EDE4"));
+        tag.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        tag.setGravity(Gravity.CENTER);
+        tag.setPadding(0, 16, 0, 0);
+        col.addView(title);
+        col.addView(tag);
+        FrameLayout.LayoutParams lp =
+                new FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER);
+        splash.addView(col, lp);
+        return splash;
+    }
+
+    public void hideSplash() {
+        if (splashView == null) return;
+        final View overlay = splashView;
+        splashView = null;
+        if (webView != null) webView.setBackgroundColor(Color.parseColor("#EFE8DC"));
+        overlay.animate()
+                .alpha(0f)
+                .setDuration(220)
+                .withEndAction(
+                        () -> {
+                            if (overlay.getParent() instanceof ViewGroup) {
+                                ((ViewGroup) overlay.getParent()).removeView(overlay);
+                            }
+                            Window window = getWindow();
+                            window.setNavigationBarColor(Color.parseColor("#EFE8DC"));
+                            WindowInsetsControllerCompat insets =
+                                    WindowCompat.getInsetsController(window, window.getDecorView());
+                            insets.setAppearanceLightNavigationBars(true);
+                        })
+                .start();
+        new Handler(Looper.getMainLooper()).postDelayed(this::maybeAskNotifications, 400);
+    }
+
+    private void maybeAskNotifications() {
+        if (isFinishing() || askedNotify) return;
+        askedNotify = true;
+        if (Build.VERSION.SDK_INT < 33) {
+            AlarmService.seedHeadsUp(this);
+            return;
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                == PackageManager.PERMISSION_GRANTED) {
+            AlarmService.seedHeadsUp(this);
+            return;
+        }
+        try {
+            new AlertDialog.Builder(this)
+                    .setTitle("Allow reminders")
+                    .setMessage("SandeshDo shows a small banner when a task is due — even if the app is closed.")
+                    .setPositiveButton(
+                            "Allow",
+                            (d, w) ->
+                                    ActivityCompat.requestPermissions(
+                                            this, new String[] {Manifest.permission.POST_NOTIFICATIONS}, 7))
+                    .setNegativeButton("Not now", null)
+                    .show();
+        } catch (Exception ignored) {
+        }
+    }
+
     @Override
     protected void onNewIntent(android.content.Intent intent) {
         super.onNewIntent(intent);
@@ -221,6 +320,10 @@ public class MainActivity extends AppCompatActivity {
     public void onRequestPermissionsResult(
             int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 7) {
+            boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            if (granted) AlarmService.seedHeadsUp(this);
+        }
         if (requestCode == 8 && pendingWebPermission != null) {
             boolean granted = grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED;
             try {

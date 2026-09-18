@@ -131,3 +131,29 @@ export function budgetLeft(tx: Transaction[], budgets: Budget[], month = monthKe
   const remaining = cap > 0 ? cap - expense : income - expense;
   return { expense, income, cap, remaining, byCat };
 }
+
+export function spendByDay(tx: Transaction[], days = 14, now = Date.now()) {
+  const rows: { key: string; label: string; spent: number; got: number }[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now);
+    d.setHours(12, 0, 0, 0);
+    d.setDate(d.getDate() - i);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    let spent = 0;
+    let got = 0;
+    for (const t of tx) {
+      const at = new Date(t.at);
+      const k = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, "0")}-${String(at.getDate()).padStart(2, "0")}`;
+      if (k !== key) continue;
+      if (t.type === "expense") spent += t.amount;
+      else got += t.amount;
+    }
+    rows.push({
+      key,
+      label: d.toLocaleDateString(undefined, { weekday: "short", day: "numeric" }),
+      spent,
+      got,
+    });
+  }
+  return rows;
+}

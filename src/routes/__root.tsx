@@ -19,7 +19,7 @@ export const Route = createRootRoute({
       {
         name: "description",
         content:
-          "SandeshDo — Remember it. Do it. Finish it. Private tasks, KhataBook money, lock-screen alerts.",
+          "SandeshDo — Remember it. Do it. Finish it. Private tasks, KhataBook money, heads-up reminders.",
       },
       { name: "application-name", content: APP_NAME },
       { name: "apple-mobile-web-app-capable", content: "yes" },
@@ -55,6 +55,12 @@ function RootDocument() {
         />
       </head>
       <body className="bg-bg text-fg antialiased">
+        <div id="sd-boot-splash" className="sd-splash" aria-hidden="true">
+          <p className="font-display text-4xl font-medium tracking-tight">SandeshDo</p>
+          <p className="mt-2 text-micro font-semibold tracking-[0.18em] uppercase" style={{ opacity: 0.7 }}>
+            Remember · Do · Finish
+          </p>
+        </div>
         <PreviewHostBridge />
         <AuthProvider>
           <AppShell>

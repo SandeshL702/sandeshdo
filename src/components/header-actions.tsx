@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { BarChart3, Settings, Sparkles } from "lucide-react";
+import { LayoutGrid, Settings, Sparkles } from "lucide-react";
 import { useT } from "@/lib/i18n";
 
 export function HeaderActions() {
@@ -15,11 +15,11 @@ export function HeaderActions() {
         <Sparkles className="size-5" />
       </button>
       <Link
-        to="/stats"
-        aria-label={t("report.title")}
+        to="/more"
+        aria-label={t("nav.more")}
         className="flex size-11 items-center justify-center rounded-2xl text-muted transition-colors duration-150 hover:text-fg"
       >
-        <BarChart3 className="size-5" />
+        <LayoutGrid className="size-5" />
       </Link>
       <Link
         to="/settings"

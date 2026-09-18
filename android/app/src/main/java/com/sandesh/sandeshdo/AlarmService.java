@@ -20,13 +20,13 @@ import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 
 /**
- * Clock-app fire path: wake the screen, post a CATEGORY_ALARM notification with
- * a real (soft) sound + full-screen intent, start AlertActivity.
- * Silent channels are skipped by Xiaomi / Vivo / Oppo / Samsung FSI.
+ * Heads-up banner when a task is due. No full-screen takeover.
+ * AlarmManager still wakes us; we post IMPORTANCE_HIGH so Android peeks a small popup.
  */
 public class AlarmService extends Service {
-    public static final String CHANNEL = "sandeshdo-lock-v7";
+    public static final String CHANNEL = "sandeshdo-heads-v8";
     public static final String PIN_CHANNEL = "sandeshdo-today-pin";
+    public static final String STATUS_CHANNEL = "sandeshdo-status-v8";
     private PowerManager.WakeLock wakeLock;
     private PowerManager.WakeLock screenLock;
 
@@ -45,10 +45,10 @@ public class AlarmService extends Service {
         if (body == null) body = overdue ? "Still pending" : "Due now";
 
         acquireWake();
-        screenLock = AlertChime.acquireScreen(this, 20_000);
+        screenLock = AlertChime.acquireScreen(this, 12_000);
         ensureChannel(this);
         int noteId = noteId(taskId);
-        Notification notification = buildAlert(this, taskId, title, body, overdue, noteId);
+        Notification notification = buildAlert(this, taskId, title, body, overdue);
         try {
             if (Build.VERSION.SDK_INT >= 34) {
                 startForeground(noteId, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
@@ -69,21 +69,6 @@ public class AlarmService extends Service {
         AlertReceiver.vibrate(this);
         AlertChime.play(this);
 
-        Intent full = new Intent(this, AlertActivity.class);
-        full.putExtra("taskId", taskId);
-        full.putExtra("title", title);
-        full.putExtra("body", body);
-        full.putExtra("overdue", overdue);
-        full.addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK
-                        | Intent.FLAG_ACTIVITY_CLEAR_TOP
-                        | Intent.FLAG_ACTIVITY_NO_USER_ACTION
-                        | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
-        try {
-            startActivity(full);
-        } catch (Exception ignored) {
-        }
-
         AlarmScheduler.onFired(this, taskId, title, "Still pending", repeatMin);
 
         new Handler(Looper.getMainLooper())
@@ -92,22 +77,18 @@ public class AlarmService extends Service {
                             releaseWake();
                             stopSelf();
                         },
-                        25_000);
+                        8_000);
         return START_NOT_STICKY;
     }
 
-    static Notification buildAlert(
-            Context ctx, String taskId, String title, String body, boolean overdue, int noteId) {
-        Intent full = new Intent(ctx, AlertActivity.class);
-        full.putExtra("taskId", taskId);
-        full.putExtra("title", title);
-        full.putExtra("body", body);
-        full.putExtra("overdue", overdue);
-        full.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        int code = AlarmScheduler.requestCode("full-" + (taskId == null ? "x" : taskId));
-        PendingIntent fullPi =
+    static Notification buildAlert(Context ctx, String taskId, String title, String body, boolean overdue) {
+        Intent open = new Intent(ctx, MainActivity.class);
+        open.putExtra("taskId", taskId);
+        open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        int code = AlarmScheduler.requestCode("open-" + (taskId == null ? "x" : taskId));
+        PendingIntent openPi =
                 PendingIntent.getActivity(
-                        ctx, code, full, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                        ctx, code, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
 
         Intent done = new Intent(ctx, ActionReceiver.class);
         done.setAction("com.sandesh.sandeshdo.DONE");
@@ -134,24 +115,55 @@ public class AlarmService extends Service {
         Uri sound = Uri.parse("android.resource://" + ctx.getPackageName() + "/" + R.raw.gentle_chime);
 
         return new NotificationCompat.Builder(ctx, CHANNEL)
-                .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                .setSmallIcon(android.R.drawable.ic_popup_reminder)
                 .setContentTitle(overdue ? "Still pending" : "Due now")
                 .setContentText(title)
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(title + "\n" + body))
-                .setPriority(NotificationCompat.PRIORITY_MAX)
-                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_REMINDER)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-                .setAutoCancel(false)
-                .setOngoing(true)
+                .setAutoCancel(true)
+                .setOngoing(false)
                 .setOnlyAlertOnce(false)
                 .setSound(sound)
-                .setContentIntent(fullPi)
-                .setFullScreenIntent(fullPi, true)
+                .setContentIntent(openPi)
+                .setDefaults(0)
                 .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
-                .setVibrate(new long[] {0, 48, 70, 48, 90})
+                .setVibrate(new long[] {0, 40, 60, 40})
                 .addAction(0, "Done", donePi)
                 .addAction(0, "10 min", snoozePi)
                 .build();
+    }
+
+    static void postHeadsUp(Context ctx, String taskId, String title, String body, boolean overdue) {
+        ensureChannel(ctx);
+        int id = noteId(taskId);
+        try {
+            NotificationManagerCompat.from(ctx).notify(id, buildAlert(ctx, taskId, title, body, overdue));
+        } catch (SecurityException ignored) {
+        }
+    }
+
+    static void seedHeadsUp(Context ctx) {
+        ensureChannel(ctx);
+        Intent open = new Intent(ctx, MainActivity.class);
+        open.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        PendingIntent pi =
+                PendingIntent.getActivity(
+                        ctx, 91, open, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        Notification n =
+                new NotificationCompat.Builder(ctx, STATUS_CHANNEL)
+                        .setSmallIcon(android.R.drawable.ic_popup_reminder)
+                        .setContentTitle("SandeshDo reminders are on")
+                        .setContentText("You’ll get a small banner when a task is due.")
+                        .setAutoCancel(true)
+                        .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                        .setContentIntent(pi)
+                        .build();
+        try {
+            NotificationManagerCompat.from(ctx).notify(7702, n);
+        } catch (SecurityException ignored) {
+        }
     }
 
     static void ensureChannel(Context context) {
@@ -159,6 +171,7 @@ public class AlarmService extends Service {
         NotificationManager nm = context.getSystemService(NotificationManager.class);
         if (nm == null) return;
         try {
+            nm.deleteNotificationChannel("sandeshdo-lock-v7");
             nm.deleteNotificationChannel("sandeshdo-lock-v6");
             nm.deleteNotificationChannel("sandeshdo-lock-v5");
             nm.deleteNotificationChannel("sandeshdo-lock-v4");
@@ -166,24 +179,21 @@ public class AlarmService extends Service {
         } catch (Exception ignored) {
         }
         Uri sound = Uri.parse("android.resource://" + context.getPackageName() + "/" + R.raw.gentle_chime);
-        AudioAttributes alarm =
+        AudioAttributes attrs =
                 new AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setUsage(AudioAttributes.USAGE_NOTIFICATION)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                         .build();
         NotificationChannel ch =
-                new NotificationChannel(CHANNEL, "Task lock-screen alerts", NotificationManager.IMPORTANCE_HIGH);
-        ch.setDescription("Full-screen popup when a task is due. Soft chime + light vibrate.");
+                new NotificationChannel(CHANNEL, "Task banners", NotificationManager.IMPORTANCE_HIGH);
+        ch.setDescription("Small heads-up banner when a task is due. Soft chime.");
         ch.enableVibration(true);
-        ch.setVibrationPattern(new long[] {0, 48, 70, 48, 90});
+        ch.setVibrationPattern(new long[] {0, 40, 60, 40});
         ch.setLockscreenVisibility(android.app.Notification.VISIBILITY_PUBLIC);
-        ch.setSound(sound, alarm);
+        ch.setSound(sound, attrs);
         ch.enableLights(true);
         ch.setShowBadge(true);
-        try {
-            ch.setBypassDnd(true);
-        } catch (Exception ignored) {
-        }
+        ch.setBypassDnd(false);
         nm.createNotificationChannel(ch);
 
         NotificationChannel pin =
@@ -193,6 +203,12 @@ public class AlarmService extends Service {
         pin.enableVibration(false);
         pin.setShowBadge(false);
         nm.createNotificationChannel(pin);
+
+        NotificationChannel status =
+                new NotificationChannel(STATUS_CHANNEL, "Status", NotificationManager.IMPORTANCE_DEFAULT);
+        status.setDescription("Confirms SandeshDo can send notifications");
+        status.setShowBadge(false);
+        nm.createNotificationChannel(status);
     }
 
     static int noteId(String taskId) {
@@ -240,7 +256,7 @@ public class AlarmService extends Service {
             if (pm == null) return;
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "sandeshdo:alert");
             wakeLock.setReferenceCounted(false);
-            wakeLock.acquire(25_000);
+            wakeLock.acquire(12_000);
         } catch (Exception ignored) {
         }
     }

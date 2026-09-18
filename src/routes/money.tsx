@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { format, isToday, isYesterday } from "date-fns";
 import { Button, Input, SectionLabel } from "@/components/ui";
 import { useApp } from "@/lib/store";
-import { budgetLeft, formatInr, moneyCatLabel, monthKey } from "@/lib/money";
+import { budgetLeft, formatInr, moneyCatLabel, monthKey, spendByDay } from "@/lib/money";
 import { groupTxByDay } from "@/lib/diary";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -26,6 +26,10 @@ export function MoneyPage() {
   const groups = useMemo(() => groupTxByDay(transactions).slice(0, 8), [transactions]);
   const remaining = stats.remaining;
   const usedPct = stats.cap > 0 ? Math.min(100, Math.round((stats.expense / stats.cap) * 100)) : 0;
+  const daily = useMemo(() => spendByDay(transactions, 14), [transactions]);
+  const maxSpend = Math.max(1, ...daily.map((d) => d.spent));
+  const todayRow = daily[daily.length - 1];
+
 
   const dayLabel = (key: string) => {
     const d = new Date(`${key}T12:00:00`);
@@ -94,6 +98,31 @@ export function MoneyPage() {
           <span className="font-display text-2xl font-medium">{t("money.gaya")}</span>
         </button>
       </div>
+
+      <section className="mt-6">
+        <SectionLabel>{t("money.daily")}</SectionLabel>
+        <div className="mt-3 rounded-[1.35rem] bg-surface px-4 py-4 shadow-[var(--sd-card-shadow)]">
+          <div className="flex h-28 items-end gap-1">
+            {daily.map((d) => (
+              <div key={d.key} className="flex min-w-0 flex-1 flex-col items-center gap-1">
+                <div className="flex h-24 w-full items-end justify-center">
+                  <div
+                    className="w-full max-w-4 rounded-t-md bg-primary"
+                    style={{ height: `${Math.max(4, Math.round((d.spent / maxSpend) * 100))}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 flex justify-between text-micro font-semibold text-subtle">
+            <span>{daily[0]?.label}</span>
+            <span>{todayRow?.label}</span>
+          </div>
+          <p className="mt-3 text-sm text-muted">
+            {t("money.todaySpend")} · {formatInr(todayRow?.spent ?? 0)}
+          </p>
+        </div>
+      </section>
 
       <section className="mt-8">
         <SectionLabel>{t("money.title")}</SectionLabel>

@@ -13,6 +13,9 @@ import {
   type GameProgress,
   type MoneyCatKind,
   type MoneyCategory,
+  type Note,
+  type NoteColor,
+  type Plan,
   type Priority,
   type RecurrenceRule,
   type Reminder,
@@ -21,6 +24,8 @@ import {
   type Task,
   type TaskStatus,
   type Transaction,
+  type VaultItem,
+  type VaultKind,
 } from "./types";
 import { uid } from "./utils";
 import { dayKey, dayHeading, tomorrowMorning } from "./time";
@@ -68,6 +73,10 @@ export interface AppState {
   transactions: Transaction[];
   budgets: Budget[];
   moneyCategories: MoneyCategory[];
+  notes: Note[];
+  plans: Plan[];
+  vault: VaultItem[];
+  vaultUnlocked: boolean;
   game: GameProgress;
   settings: Settings;
   focus: FocusState;
@@ -96,6 +105,17 @@ export interface AppState {
   addTx: (draft: Omit<Transaction, "id">) => string;
   deleteTx: (id: string) => void;
   setBudget: (category: string, limit: number) => void;
+  addNote: (draft: { title: string; body: string; color?: NoteColor }) => string;
+  updateNote: (id: string, patch: Partial<Note>) => void;
+  deleteNote: (id: string) => void;
+  addPlan: (draft: { title: string; note?: string; when?: number | null; cost?: number | null }) => string;
+  updatePlan: (id: string, patch: Partial<Plan>) => void;
+  deletePlan: (id: string) => void;
+  addVaultItem: (draft: { kind: VaultKind; label: string; secret: string }) => string;
+  updateVaultItem: (id: string, patch: Partial<VaultItem>) => void;
+  deleteVaultItem: (id: string) => void;
+  unlockVault: () => void;
+  lockVault: () => void;
   spendHeal: () => boolean;
   spendRevive: () => boolean;
   patchSettings: (patch: Partial<Settings>) => void;
@@ -125,6 +145,9 @@ export interface AppState {
     budgets?: Budget[];
     moneyCategories?: MoneyCategory[];
     game?: GameProgress;
+    notes?: Note[];
+    plans?: Plan[];
+    vault?: VaultItem[];
   }) => void;
   resetDemo: () => void;
 }
@@ -308,6 +331,9 @@ function initialClientData() {
     transactions: [] as Transaction[],
     budgets: DEFAULT_BUDGETS,
     moneyCategories: DEFAULT_MONEY_CATEGORIES,
+    notes: [] as Note[],
+    plans: [] as Plan[],
+    vault: [] as VaultItem[],
     game: { ...DEFAULT_GAME },
     settings: {
       ...DEFAULT_SETTINGS,
@@ -380,6 +406,10 @@ export const useApp = create<AppState>()(
       transactions: BOOT.transactions,
       budgets: BOOT.budgets,
       moneyCategories: DEFAULT_MONEY_CATEGORIES,
+      notes: BOOT.notes,
+      plans: BOOT.plans,
+      vault: BOOT.vault,
+      vaultUnlocked: false,
       game: BOOT.game,
       settings: BOOT.settings,
       focus: DEFAULT_FOCUS,
@@ -748,6 +778,79 @@ export const useApp = create<AppState>()(
         });
       },
 
+      addNote: (draft) => {
+        const now = Date.now();
+        const note: Note = {
+          id: uid(),
+          title: draft.title.trim() || "Note",
+          body: draft.body.trim(),
+          color: draft.color ?? "paper",
+          pinned: false,
+          updatedAt: now,
+        };
+        set((s) => ({ notes: [note, ...s.notes] }));
+        queueBackup();
+        return note.id;
+      },
+      updateNote: (id, patch) => {
+        set((s) => ({
+          notes: s.notes.map((n) => (n.id === id ? { ...n, ...patch, updatedAt: Date.now() } : n)),
+        }));
+        queueBackup();
+      },
+      deleteNote: (id) => {
+        set((s) => ({ notes: s.notes.filter((n) => n.id !== id) }));
+        queueBackup();
+      },
+      addPlan: (draft) => {
+        const plan: Plan = {
+          id: uid(),
+          title: draft.title.trim(),
+          note: draft.note?.trim() ?? "",
+          when: draft.when ?? null,
+          cost: draft.cost ?? null,
+          done: false,
+          createdAt: Date.now(),
+        };
+        if (!plan.title) return "";
+        set((s) => ({ plans: [plan, ...s.plans] }));
+        queueBackup();
+        return plan.id;
+      },
+      updatePlan: (id, patch) => {
+        set((s) => ({ plans: s.plans.map((p) => (p.id === id ? { ...p, ...patch } : p)) }));
+        queueBackup();
+      },
+      deletePlan: (id) => {
+        set((s) => ({ plans: s.plans.filter((p) => p.id !== id) }));
+        queueBackup();
+      },
+      addVaultItem: (draft) => {
+        const item: VaultItem = {
+          id: uid(),
+          kind: draft.kind,
+          label: draft.label.trim(),
+          secret: draft.secret,
+          updatedAt: Date.now(),
+        };
+        if (!item.label) return "";
+        set((s) => ({ vault: [item, ...s.vault] }));
+        queueBackup();
+        return item.id;
+      },
+      updateVaultItem: (id, patch) => {
+        set((s) => ({
+          vault: s.vault.map((v) => (v.id === id ? { ...v, ...patch, updatedAt: Date.now() } : v)),
+        }));
+        queueBackup();
+      },
+      deleteVaultItem: (id) => {
+        set((s) => ({ vault: s.vault.filter((v) => v.id !== id) }));
+        queueBackup();
+      },
+      unlockVault: () => set({ vaultUnlocked: true }),
+      lockVault: () => set({ vaultUnlocked: false }),
+
       spendHeal: () => {
         const next = buyHeal(get().game);
         if (!next) return false;
@@ -1082,6 +1185,10 @@ export const useApp = create<AppState>()(
           budgets: data.budgets?.length ? data.budgets : DEFAULT_BUDGETS,
           moneyCategories: data.moneyCategories?.length ? data.moneyCategories : DEFAULT_MONEY_CATEGORIES,
           game: { ...DEFAULT_GAME, ...data.game },
+          notes: data.notes ?? [],
+          plans: data.plans ?? [],
+          vault: data.vault ?? [],
+          vaultUnlocked: false,
         });
         armScheduler();
         queueBackup();
@@ -1135,6 +1242,9 @@ export const useApp = create<AppState>()(
         budgets: s.budgets,
         moneyCategories: s.moneyCategories,
         game: s.game,
+        notes: s.notes,
+        plans: s.plans,
+        vault: s.vault,
         focus: s.focus.running
           ? s.focus
           : { ...s.focus, running: false, endsAt: null },
@@ -1187,6 +1297,10 @@ export const useApp = create<AppState>()(
                 ? current.moneyCategories
                 : DEFAULT_MONEY_CATEGORIES,
           ),
+          notes: p.notes ?? current.notes ?? [],
+          plans: p.plans ?? current.plans ?? [],
+          vault: p.vault ?? current.vault ?? [],
+          vaultUnlocked: false,
           game: wipeDemo
             ? { ...DEFAULT_GAME }
             : {

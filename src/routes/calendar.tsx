@@ -93,9 +93,10 @@ export function CalendarPage() {
           <ViewSwitch current="cal" />
         </div>
         <div className="mt-5 flex items-center justify-between gap-2">
-          <h1 className="font-display min-w-0 truncate text-title leading-none font-medium tracking-tight">
-            {format(cursor, "MMMM yyyy")}
-          </h1>
+          <div className="min-w-0">
+            <h1 className="font-display text-title leading-none font-medium tracking-tight">{format(cursor, "MMMM")}</h1>
+            <p className="mt-1 text-sm font-semibold tabular-nums text-muted">{format(cursor, "yyyy")}</p>
+          </div>
           <div className="flex shrink-0 items-center">
             <IconButton className="size-10" onClick={() => setCursor((d) => subMonths(d, 1))} aria-label="Previous month">
               <ChevronLeft className="size-5" />
