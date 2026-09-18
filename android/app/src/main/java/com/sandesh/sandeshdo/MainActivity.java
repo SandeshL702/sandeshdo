@@ -81,7 +81,7 @@ public class MainActivity extends AppCompatActivity {
         AlarmScheduler.scheduleSaved(this);
 
         webView = new WebView(this);
-        webView.setBackgroundColor(Color.parseColor("#0B6B58"));
+        webView.setBackgroundColor(Color.parseColor("#EFE8DC"));
         webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
         root = new FrameLayout(this);
         root.addView(
@@ -172,13 +172,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void bootFromAssets() {
-        String html = readAsset("index.html");
-        if (html == null) {
-            webView.loadUrl(INDEX.toString());
-            return;
-        }
-        // Load HTML directly so the system never tries to open a browser for the first page.
-        webView.loadDataWithBaseURL(ORIGIN + "/", html, "text/html", "utf-8", null);
+        // Real https origin so ES modules run. loadDataWithBaseURL leaves a green screen.
+        webView.loadUrl(INDEX.toString());
     }
 
     @Nullable
@@ -409,9 +404,10 @@ public class MainActivity extends AppCompatActivity {
 
         private boolean handleUrl(WebView view, Uri uri) {
             if (uri == null) return true;
-            String scheme = uri.getScheme();
-            if ("https".equals(scheme) || "http".equals(scheme)) {
-                view.loadUrl(uri.toString());
+            String host = uri.getHost();
+            // Let the WebView load app assets — interceptRequest serves the files.
+            if (host != null && host.equals("appassets.androidplatform.net")) {
+                return false;
             }
             return true;
         }
