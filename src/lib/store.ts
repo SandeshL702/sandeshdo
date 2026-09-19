@@ -29,7 +29,7 @@ import {
   type VaultKind,
 } from "./types";
 import { uid } from "./utils";
-import { dayKey, dayHeading, tomorrowMorning } from "./time";
+import { dayKey, dayHeading, tomorrowMorning, canUndoAt } from "./time";
 import { canRecur, nextFutureOccurrence } from "./recurrence";
 import { liveStatus, rebuildReminders } from "./engine";
 import { notifyFocus, notifySummary, notifyTask, playGentleTone, pulseVibrate, syncScheduledAlarms, cancelNativeTask } from "./notifications";
@@ -49,7 +49,7 @@ import {
 import { playCompleteSfx, playDamageSfx, playHealSfx, playLevelUpSfx } from "./sfx";
 import { persistBackup, serializeBackup, tryNativeRestore } from "./backup";
 import { decryptVaultItems, encryptVaultItems } from "./crypto";
-import { DEFAULT_BUDGETS, DEFAULT_MONEY_CATEGORIES, ensureIncomeCats, isDemoBudgets } from "./money";
+import { DEFAULT_BUDGETS, DEFAULT_MONEY_CATEGORIES, ensureMoneyCats, isDemoBudgets } from "./money";
 
 export interface DraftTask {
   title: string;
@@ -105,12 +105,14 @@ export interface AppState {
   deleteSubtask: (id: string) => void;
   addCategory: (name: string) => string;
   deleteCategory: (id: string) => void;
-  addMoneyCategory: (name: string, kind: MoneyCatKind) => void;
+  addMoneyCategory: (name: string, kind: MoneyCatKind, parentId?: string | null) => void;
   renameMoneyCategory: (id: string, name: string) => void;
   setMoneyCatKind: (id: string, kind: MoneyCatKind) => void;
   deleteMoneyCategory: (id: string) => void;
+  deleteCompletion: (id: string) => void;
   addTx: (draft: Omit<Transaction, "id">) => string;
   deleteTx: (id: string) => void;
+  forgetTx: (id: string) => void;
   restoreTx: (id: string) => void;
   restoreTask: (id: string) => void;
   restoreNote: (id: string) => void;
@@ -484,7 +486,7 @@ export const useApp = create<AppState>()(
         set({ hydrated: true });
         if (!get().categories.length) set({ categories: DEFAULT_CATEGORIES });
         if (!get().moneyCategories.length) set({ moneyCategories: DEFAULT_MONEY_CATEGORIES });
-        else set({ moneyCategories: ensureIncomeCats(get().moneyCategories) });
+        else set({ moneyCategories: ensureMoneyCats(get().moneyCategories) });
         if (isDemoBudgets(get().budgets) || (get().settings.demoRev ?? 0) < DEMO_REV) {
           const now = Date.now();
           set((s) => {
@@ -669,6 +671,7 @@ export const useApp = create<AppState>()(
           const target =
             (completionId ? s.completions.find((c) => c.id === completionId) : undefined) ??
             s.completions.find((c) => c.taskId === id && !c.undoneAt);
+          if (!target || !canUndoAt(target.completedAt, now)) return s;
           const completions = s.completions.map((c) =>
             target && c.id === target.id ? { ...c, undoneAt: now } : c,
           );
@@ -811,12 +814,30 @@ export const useApp = create<AppState>()(
         }));
       },
 
-      addMoneyCategory: (name, kind) => {
+      addMoneyCategory: (name, kind, parentId) => {
         const trimmed = name.trim();
         if (!trimmed) return;
         set((s) => {
-          if (s.moneyCategories.some((c) => c.name.toLowerCase() === trimmed.toLowerCase())) return s;
-          return { moneyCategories: [...s.moneyCategories, { id: uid(), name: trimmed, kind }] };
+          if (s.moneyCategories.some((c) => c.name.toLowerCase() === trimmed.toLowerCase() && (c.parentId ?? null) === (parentId ?? null))) {
+            return s;
+          }
+          const parent = parentId ? s.moneyCategories.find((c) => c.id === parentId) : null;
+          const row: MoneyCategory = {
+            id: uid(),
+            name: trimmed,
+            kind: parent?.kind ?? kind,
+            parentId: parent ? parent.id : null,
+          };
+          if (!parent) return { moneyCategories: [...s.moneyCategories, row] };
+          let insertAt = s.moneyCategories.findIndex((c) => c.id === parent.id);
+          if (insertAt < 0) return { moneyCategories: [...s.moneyCategories, row] };
+          for (let i = insertAt + 1; i < s.moneyCategories.length; i++) {
+            if (s.moneyCategories[i].parentId === parent.id) insertAt = i;
+            else if (!s.moneyCategories[i].parentId) break;
+          }
+          return {
+            moneyCategories: [...s.moneyCategories.slice(0, insertAt + 1), row, ...s.moneyCategories.slice(insertAt + 1)],
+          };
         });
         queueBackup();
       },
@@ -839,15 +860,39 @@ export const useApp = create<AppState>()(
 
       deleteMoneyCategory: (id) => {
         set((s) => {
-          if (s.moneyCategories.length <= 1) return s;
-          const rest = s.moneyCategories.filter((c) => c.id !== id);
-          const fallback = rest.find((c) => c.id === "other") ?? rest.find((c) => c.kind === "both") ?? rest[0];
+          const gone = s.moneyCategories.find((c) => c.id === id);
+          const drop = new Set(
+            s.moneyCategories.filter((c) => c.id === id || c.parentId === id).map((c) => c.id),
+          );
+          const rest = s.moneyCategories.filter((c) => !drop.has(c.id));
+          if (rest.length < 1) return s;
+          const fallback = rest.find((c) => c.id === (gone?.parentId ?? "other")) ?? rest.find((c) => c.id === "other") ?? rest.find((c) => c.kind === "both") ?? rest[0];
           return {
             moneyCategories: rest,
-            transactions: s.transactions.map((tx) => (tx.category === id ? { ...tx, category: fallback.id } : tx)),
-            budgets: s.budgets.filter((b) => b.category !== id),
+            transactions: s.transactions.map((tx) => (drop.has(tx.category) ? { ...tx, category: fallback.id } : tx)),
+            budgets: s.budgets.filter((b) => !drop.has(b.category)),
           };
         });
+        queueBackup();
+      },
+
+      deleteCompletion: (id) => {
+        const now = Date.now();
+        set((s) => {
+          const gone = s.completions.find((c) => c.id === id);
+          if (!gone) return s;
+          const completions = s.completions.filter((c) => c.id !== id);
+          const task = s.tasks.find((t) => t.id === gone.taskId && t.status === "completed");
+          if (!task) return { completions };
+          const tasks = s.tasks.filter((t) => t.id !== task.id);
+          return {
+            completions,
+            tasks,
+            trashTasks: [task, ...s.trashTasks].slice(0, 40),
+            reminders: rebuildReminders(tasks, s.settings, now, s.transactions, s.recurringSpends),
+          };
+        });
+        armScheduler();
         queueBackup();
       },
 
@@ -870,11 +915,25 @@ export const useApp = create<AppState>()(
       },
 
       deleteTx: (id) => {
+        const now = Date.now();
         set((s) => {
           const gone = s.transactions.find((t) => t.id === id);
+          if (!gone || !canUndoAt(gone.at, now)) return s;
           return {
             transactions: s.transactions.filter((t) => t.id !== id),
-            trashTx: gone ? [gone, ...s.trashTx].slice(0, 40) : s.trashTx,
+            trashTx: [gone, ...s.trashTx].slice(0, 40),
+          };
+        });
+        queueBackup();
+      },
+
+      forgetTx: (id: string) => {
+        set((s) => {
+          const gone = s.transactions.find((t) => t.id === id);
+          if (!gone) return s;
+          return {
+            transactions: s.transactions.filter((t) => t.id !== id),
+            trashTx: [gone, ...s.trashTx].slice(0, 40),
           };
         });
         queueBackup();
@@ -1577,7 +1636,7 @@ export const useApp = create<AppState>()(
           categories: p.categories?.length ? p.categories : current.categories?.length ? current.categories : DEFAULT_CATEGORIES,
           settings: mergedSettings,
           budgets: wipeDemo || isDemoBudgets(p.budgets ?? []) ? [] : p.budgets?.length ? p.budgets : current.budgets,
-          moneyCategories: ensureIncomeCats(
+          moneyCategories: ensureMoneyCats(
             p.moneyCategories?.length
               ? p.moneyCategories
               : current.moneyCategories?.length
@@ -1749,9 +1808,16 @@ export function selectCompletionsByDay(completions: Completion[], now: number) {
   }));
 }
 
-export function selectDayLoad(tasks: Task[], completions: Completion[]) {
+export function selectDayLoad(
+  tasks: Task[],
+  completions: Completion[],
+  plans: Plan[] = [],
+  transactions: Transaction[] = [],
+) {
   const remaining = new Map<string, number>();
   const finished = new Map<string, number>();
+  const planned = new Map<string, number>();
+  const money = new Map<string, number>();
   const openTitles = new Map<string, string[]>();
   for (const t of tasks) {
     if (t.status === "completed" || !t.dueAt) continue;
@@ -1766,5 +1832,14 @@ export function selectDayLoad(tasks: Task[], completions: Completion[]) {
     const key = dayKey(c.completedAt);
     finished.set(key, (finished.get(key) ?? 0) + 1);
   }
-  return { remaining, finished, openTitles };
+  for (const p of plans) {
+    if (!p.when) continue;
+    const key = dayKey(p.when);
+    planned.set(key, (planned.get(key) ?? 0) + 1);
+  }
+  for (const tx of transactions) {
+    const key = dayKey(tx.at);
+    money.set(key, (money.get(key) ?? 0) + 1);
+  }
+  return { remaining, finished, planned, money, openTitles };
 }

@@ -57,7 +57,7 @@ English or Hinglish. Default English.
 
 **[Download SandeshDo.apk](https://github.com/SandeshL702/sandeshdo/releases/latest/download/SandeshDo.apk)** — the file on Releases. Not the green “Code → Download ZIP”.
 
-Package `com.sandesh.sandeshdo` · **2.1.2**
+Package `com.sandesh.sandeshdo` · **2.1.5**
 
 1. Open the `.apk` (if the phone says zip, rename to `.apk` — Android packages are zip under the hood)
 2. Allow **notifications** and **exact alarms**

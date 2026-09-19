@@ -2,6 +2,10 @@ import type { Budget, MoneyCategory, Transaction, TxType } from "./types";
 
 export const DEFAULT_MONEY_CATEGORIES: MoneyCategory[] = [
   { id: "food", name: "Food", kind: "out" },
+  { id: "food-tiffin", name: "Tiffin", kind: "out", parentId: "food" },
+  { id: "food-out", name: "Eating out", kind: "out", parentId: "food" },
+  { id: "food-grocery", name: "Groceries", kind: "out", parentId: "food" },
+  { id: "food-chai", name: "Chai & snacks", kind: "out", parentId: "food" },
   { id: "travel", name: "Travel", kind: "out" },
   { id: "bills", name: "Bills", kind: "out" },
   { id: "shopping", name: "Shopping", kind: "out" },
@@ -12,6 +16,8 @@ export const DEFAULT_MONEY_CATEGORIES: MoneyCategory[] = [
   { id: "client", name: "Client", kind: "in" },
   { id: "other", name: "Other", kind: "both" },
 ];
+
+const FOOD_SUBS: MoneyCategory[] = DEFAULT_MONEY_CATEGORIES.filter((c) => c.parentId === "food");
 
 export const DEFAULT_BUDGETS: Budget[] = [];
 
@@ -24,7 +30,11 @@ export function isDemoBudgets(budgets: Budget[]): boolean {
 }
 
 const NOTE_TO_CAT: Array<{ re: RegExp; id: string }> = [
-  { re: /\b(lunch|dinner|breakfast|food|chai|coffee|swiggy|zomato|snack|khana|pizza|biryani)\b/i, id: "food" },
+  { re: /\b(tiffin|thali|dabba|mess|canteen)\b/i, id: "food-tiffin" },
+  { re: /\b(swiggy|zomato|restaurant|hotel|dine|eating out)\b/i, id: "food-out" },
+  { re: /\b(grocery|kirana|sabzi|vegetables|ration|bazaar)\b/i, id: "food-grocery" },
+  { re: /\b(chai|coffee|tea|snack|samosa|biscuit|cutting)\b/i, id: "food-chai" },
+  { re: /\b(lunch|dinner|breakfast|food|khana|pizza|biryani)\b/i, id: "food" },
   { re: /\b(uber|ola|petrol|metro|auto|bus|train|travel|fuel|cab)\b/i, id: "travel" },
   { re: /\b(electricity|rent|wifi|recharge|bill|emi|gas|water)\b/i, id: "bills" },
   { re: /\b(amazon|flipkart|clothes|shopping|myntra)\b/i, id: "shopping" },
@@ -36,6 +46,10 @@ const NOTE_TO_CAT: Array<{ re: RegExp; id: string }> = [
 ];
 
 export function ensureIncomeCats(cats: MoneyCategory[]): MoneyCategory[] {
+  return ensureMoneyCats(cats);
+}
+
+export function ensureMoneyCats(cats: MoneyCategory[]): MoneyCategory[] {
   const list = cats.length ? [...cats] : [...DEFAULT_MONEY_CATEGORIES];
   const extras: MoneyCategory[] = [
     { id: "freelance", name: "Freelance", kind: "in" },
@@ -47,7 +61,71 @@ export function ensureIncomeCats(cats: MoneyCategory[]): MoneyCategory[] {
     if (otherIdx >= 0) list.splice(otherIdx, 0, extra);
     else list.push(extra);
   }
+  if (!list.some((c) => c.id === "food")) {
+    list.unshift({ id: "food", name: "Food", kind: "out" });
+  }
+  const foodIdx = list.findIndex((c) => c.id === "food");
+  let insertAt = foodIdx >= 0 ? foodIdx + 1 : list.length;
+  for (const sub of FOOD_SUBS) {
+    const existing = list.find((c) => c.id === sub.id);
+    if (existing) {
+      if (!existing.parentId) existing.parentId = "food";
+      continue;
+    }
+    list.splice(insertAt, 0, { ...sub });
+    insertAt += 1;
+  }
   return list;
+}
+
+export function parentCats(cats: MoneyCategory[], kind?: TxType): MoneyCategory[] {
+  return cats.filter((c) => {
+    if (c.parentId) return false;
+    if (!kind) return true;
+    return kind === "income" ? c.kind !== "out" : c.kind !== "in";
+  });
+}
+
+export function childCats(cats: MoneyCategory[], parentId: string): MoneyCategory[] {
+  return cats.filter((c) => c.parentId === parentId);
+}
+
+export function rootCatId(cats: MoneyCategory[], id: string): string {
+  const cat = cats.find((c) => c.id === id);
+  return cat?.parentId || id;
+}
+
+export function catGroupIds(cats: MoneyCategory[], id: string): string[] {
+  const kids = cats.filter((c) => c.parentId === id).map((c) => c.id);
+  return [id, ...kids];
+}
+
+export function monthCatSpend(tx: Transaction[], ids: string[], month = monthKey()): number {
+  const set = new Set(ids);
+  let n = 0;
+  for (const t of tx) {
+    if (t.type !== "expense") continue;
+    if (monthKey(t.at) !== month) continue;
+    if (set.has(t.category)) n += t.amount;
+  }
+  return n;
+}
+
+function envelopeCaps(budgets: Budget[], cats: MoneyCategory[]): Budget[] {
+  if (!cats.length) return budgets;
+  const parentCapped = new Set(
+    budgets
+      .filter((b) => {
+        const c = cats.find((x) => x.id === b.category);
+        return Boolean(c && !c.parentId && b.limit > 0);
+      })
+      .map((b) => b.category),
+  );
+  return budgets.filter((b) => {
+    const c = cats.find((x) => x.id === b.category);
+    if (!c?.parentId) return true;
+    return !parentCapped.has(c.parentId);
+  });
 }
 
 export function catsForType(cats: MoneyCategory[], type: TxType): MoneyCategory[] {
@@ -126,9 +204,14 @@ export function monthTotals(tx: Transaction[], month = monthKey()) {
   return { income, expense, net: income - expense, byCat, inByCat };
 }
 
-export function budgetLeft(tx: Transaction[], budgets: Budget[], month = monthKey()) {
+export function budgetLeft(
+  tx: Transaction[],
+  budgets: Budget[],
+  month = monthKey(),
+  cats: MoneyCategory[] = [],
+) {
   const { expense, income, byCat } = monthTotals(tx, month);
-  const cap = budgets.reduce((n, b) => n + b.limit, 0);
+  const cap = envelopeCaps(budgets, cats).reduce((n, b) => n + b.limit, 0);
   const remaining = cap > 0 ? cap - expense : income - expense;
   return { expense, income, cap, remaining, byCat };
 }

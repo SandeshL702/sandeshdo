@@ -184,6 +184,8 @@ export interface MoneyCategory {
   id: string;
   name: string;
   kind: MoneyCatKind;
+  /** Parent category id. Food → Tiffin / Eating out / Groceries. */
+  parentId?: string | null;
 }
 
 export interface Transaction {

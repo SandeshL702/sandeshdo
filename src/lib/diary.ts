@@ -1,10 +1,11 @@
-import type { Completion, Task, Transaction } from "./types";
+import type { Completion, Plan, Task, Transaction } from "./types";
 import { dayKey } from "./time";
 import { liveStatus } from "./engine";
 
 export type DayEntry =
   | { kind: "done"; at: number; title: string; id: string }
   | { kind: "open"; at: number; title: string; id: string }
+  | { kind: "plan"; at: number; title: string; id: string; cost?: number | null; done?: boolean }
   | { kind: "in"; at: number; title: string; id: string; amount: number }
   | { kind: "out"; at: number; title: string; id: string; amount: number };
 
@@ -40,6 +41,7 @@ export function buildDayLog(
   transactions: Transaction[],
   key: string,
   now = Date.now(),
+  plans: Plan[] = [],
 ): DayEntry[] {
   const entries: DayEntry[] = [];
   for (const c of completions) {
@@ -53,6 +55,10 @@ export function buildDayLog(
     const st = liveStatus(t, now);
     if (st === "completed") continue;
     entries.push({ kind: "open", at: t.dueAt, title: t.title, id: t.id });
+  }
+  for (const p of plans) {
+    if (!p.when || dayKey(p.when) !== key) continue;
+    entries.push({ kind: "plan", at: p.when, title: p.title, id: p.id, cost: p.cost, done: p.done });
   }
   for (const tx of transactions) {
     if (dayKey(tx.at) !== key) continue;

@@ -169,3 +169,13 @@ export function weekdayIndex(name: string): number | null {
   };
   return map[name.toLowerCase()] ?? null;
 }
+
+export const UNDO_WINDOW_MS = 10 * 60_000;
+
+/** Undo is only allowed for 10 minutes. After that it is locked until Settings delete. */
+export function canUndoAt(at: number | null | undefined, now = Date.now()): boolean {
+  if (at == null || !Number.isFinite(at)) return false;
+  const age = now - at;
+  return age >= 0 && age < UNDO_WINDOW_MS;
+}
+

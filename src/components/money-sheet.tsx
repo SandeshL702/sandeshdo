@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Sheet } from "@/components/sheet";
 import { Button, Input } from "@/components/ui";
 import { useApp } from "@/lib/store";
-import { catsForType, formatInr, guessCategory, moneyCatLabel } from "@/lib/money";
+import { catsForType, childCats, formatInr, guessCategory, moneyCatLabel, parentCats, rootCatId } from "@/lib/money";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { TxType } from "@/lib/types";
@@ -32,6 +32,9 @@ export function MoneySheet({
   const [repeatAt, setRepeatAt] = useState("20:00");
 
   const cats = catsForType(moneyCategories, type);
+  const roots = parentCats(cats, type);
+  const selectedRoot = rootCatId(moneyCategories, category);
+  const subs = childCats(moneyCategories, selectedRoot);
 
   useEffect(() => {
     if (!open) return;
@@ -166,20 +169,37 @@ export function MoneySheet({
       />
 
       <div className="mt-3 flex flex-wrap gap-2">
-        {cats.map((c) => (
+        {roots.map((c) => (
           <button
             key={c.id}
             type="button"
             onClick={() => setCategory(c.id)}
             className={cn(
               "h-9 rounded-full px-3 text-xs font-semibold",
-              category === c.id ? "bg-fg text-bg" : "bg-bg text-muted shadow-[var(--sd-card-shadow)]",
+              selectedRoot === c.id ? "bg-fg text-bg" : "bg-bg text-muted shadow-[var(--sd-card-shadow)]",
             )}
           >
             {moneyCatLabel(moneyCategories, c.id, t)}
           </button>
         ))}
       </div>
+      {subs.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {subs.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => setCategory(c.id)}
+              className={cn(
+                "h-9 rounded-full px-3 text-xs font-semibold",
+                category === c.id ? "bg-primary text-primary-fg" : "bg-bg text-muted shadow-[var(--sd-card-shadow)]",
+              )}
+            >
+              {moneyCatLabel(moneyCategories, c.id, t)}
+            </button>
+          ))}
+        </div>
+      )}
 
       <button
         type="button"

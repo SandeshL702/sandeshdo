@@ -37,7 +37,7 @@ function TodayPage() {
   const [filter, setFilter] = useState<"all" | "overdue" | "today" | "inbox">("all");
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    const timer = window.setInterval(() => setNow(Date.now()), 10_000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -146,6 +146,7 @@ function TodayPage() {
                           key={item.id}
                           item={item}
                           task={tasks.find((row) => row.id === item.taskId)}
+                          now={now}
                           onReopen={() => reopenTask(item.taskId, item.id)}
                         />
                       );
@@ -154,6 +155,9 @@ function TodayPage() {
                 </div>
               ))}
             </div>
+          )}
+          {completedGroups.length > 0 && (
+            <p className="mt-6 px-2 text-center text-xs text-subtle">{t("settings.recordsHint")}</p>
           )}
         </section>
       ) : openCount === 0 ? (

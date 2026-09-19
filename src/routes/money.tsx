@@ -3,12 +3,24 @@ import { createFileRoute } from "@tanstack/react-router";
 import { format, isToday, isYesterday } from "date-fns";
 import { Button, Input, SectionLabel } from "@/components/ui";
 import { useApp } from "@/lib/store";
-import { budgetLeft, formatInr, isDemoBudgets, moneyCatLabel, monthKey, spendByDay } from "@/lib/money";
+import {
+  budgetLeft,
+  catGroupIds,
+  childCats,
+  formatInr,
+  isDemoBudgets,
+  moneyCatLabel,
+  monthCatSpend,
+  monthKey,
+  spendByDay,
+} from "@/lib/money";
 import { groupTxByDay } from "@/lib/diary";
 import { useT } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
+import { canUndoAt } from "@/lib/time";
 import { BrandMark } from "@/components/brand-mark";
 import { HeaderActions } from "@/components/header-actions";
+import type { MoneyCategory } from "@/lib/types";
 
 export const Route = createFileRoute("/money")({ component: MoneyPage });
 
@@ -19,30 +31,136 @@ export function MoneyPage() {
   const moneyCategories = useApp((s) => s.moneyCategories);
   const deleteTx = useApp((s) => s.deleteTx);
   const setBudget = useApp((s) => s.setBudget);
+  const addMoneyCategory = useApp((s) => s.addMoneyCategory);
   const recurringSpends = useApp((s) => s.recurringSpends);
   const removeRecurringSpend = useApp((s) => s.removeRecurringSpend);
   const toggleRecurringSpend = useApp((s) => s.toggleRecurringSpend);
   const month = monthKey();
-  const stats = useMemo(() => budgetLeft(transactions, budgets, month), [transactions, budgets, month]);
+  const stats = useMemo(
+    () => budgetLeft(transactions, budgets, month, moneyCategories),
+    [transactions, budgets, month, moneyCategories],
+  );
   const [editing, setEditing] = useState<string | null>(null);
   const [limitDraft, setLimitDraft] = useState("");
+  const [addingSub, setAddingSub] = useState<string | null>(null);
+  const [subDraft, setSubDraft] = useState("");
+  const [now, setNow] = useState(() => Date.now());
   const groups = useMemo(() => groupTxByDay(transactions).slice(0, 8), [transactions]);
   const remaining = stats.remaining;
   const usedPct = stats.cap > 0 ? Math.min(100, Math.round((stats.expense / stats.cap) * 100)) : 0;
   const daily = useMemo(() => spendByDay(transactions, 14), [transactions]);
   const maxSpend = Math.max(1, ...daily.map((d) => d.spent));
   const todayRow = daily[daily.length - 1];
+  const parents = moneyCategories.filter((c) => c.kind !== "in" && !c.parentId);
 
   useEffect(() => {
     if (isDemoBudgets(budgets)) useApp.setState({ budgets: [] });
   }, [budgets]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 10_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const dayLabel = (key: string) => {
     const d = new Date(`${key}T12:00:00`);
     if (isToday(d)) return t("money.today");
     if (isYesterday(d)) return t("money.yesterday");
     return format(d, "EEE d MMM");
+  };
+
+  const renderCap = (c: MoneyCategory, nested = false) => {
+    const ids = nested ? [c.id] : catGroupIds(moneyCategories, c.id);
+    const spent = monthCatSpend(transactions, ids, month);
+    const limit = budgets.find((b) => b.category === c.id)?.limit ?? 0;
+    const pct = limit > 0 ? Math.min(100, Math.round((spent / limit) * 100)) : 0;
+    const kids = nested ? [] : childCats(moneyCategories, c.id);
+    return (
+      <div key={c.id} className={cn("sd-card rounded-2xl px-4 py-3", nested && "ml-4 bg-bg shadow-none")}>
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold">{moneyCatLabel(moneyCategories, c.id, t)}</div>
+            <div className="text-xs text-muted tabular-nums">
+              {formatInr(spent)}
+              {limit > 0 ? ` / ${formatInr(limit)}` : ` · ${t("money.noCap")}`}
+            </div>
+          </div>
+          {editing === c.id ? (
+            <form
+              className="flex items-center gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                setBudget(c.id, Number(limitDraft) || 0);
+                setEditing(null);
+              }}
+            >
+              <Input
+                className="h-10 w-24"
+                inputMode="numeric"
+                value={limitDraft}
+                onChange={(e) => setLimitDraft(e.target.value)}
+                autoFocus
+              />
+              <Button size="sm" type="submit">
+                {t("money.set")}
+              </Button>
+            </form>
+          ) : (
+            <button
+              type="button"
+              className="h-10 px-2 text-xs font-medium text-muted"
+              onClick={() => {
+                setEditing(c.id);
+                setLimitDraft(String(limit || ""));
+              }}
+            >
+              {t("money.edit")}
+            </button>
+          )}
+        </div>
+        <div className="mt-2 h-1 overflow-hidden rounded-full bg-fg/8">
+          <div className={cn("h-full rounded-full", pct >= 100 ? "bg-urgent" : "bg-primary")} style={{ width: `${pct}%` }} />
+        </div>
+        {!nested && kids.length > 0 && <div className="mt-2 space-y-2">{kids.map((kid) => renderCap(kid, true))}</div>}
+        {!nested && (
+          <div className="mt-2">
+            {addingSub === c.id ? (
+              <form
+                className="flex items-center gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  addMoneyCategory(subDraft, c.kind === "in" ? "in" : "out", c.id);
+                  setSubDraft("");
+                  setAddingSub(null);
+                }}
+              >
+                <Input
+                  className="h-10 flex-1"
+                  value={subDraft}
+                  onChange={(e) => setSubDraft(e.target.value)}
+                  placeholder={t("settings.addSub")}
+                  autoFocus
+                />
+                <Button size="sm" type="submit" disabled={!subDraft.trim()}>
+                  {t("settings.add")}
+                </Button>
+              </form>
+            ) : (
+              <button
+                type="button"
+                className="h-8 px-1 text-xs font-medium text-muted"
+                onClick={() => {
+                  setAddingSub(c.id);
+                  setSubDraft("");
+                }}
+              >
+                {t("money.addSub")}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -188,9 +306,11 @@ export function MoneyPage() {
                         {row.type === "income" ? "+" : "−"}
                         {formatInr(row.amount)}
                       </div>
-                      <button type="button" className="h-10 px-1 text-xs text-muted" onClick={() => deleteTx(row.id)}>
-                        {t("money.undo")}
-                      </button>
+                      {canUndoAt(row.at, now) ? (
+                        <button type="button" className="h-10 px-1 text-xs text-muted" onClick={() => deleteTx(row.id)}>
+                          {t("money.undo")}
+                        </button>
+                      ) : null}
                     </div>
                   ))}
                 </div>
@@ -202,63 +322,7 @@ export function MoneyPage() {
 
       <section className="mt-8">
         <SectionLabel>{t("money.budgets")}</SectionLabel>
-        <div className="space-y-2">
-          {moneyCategories
-            .filter((c) => c.kind !== "in")
-            .map((c) => {
-            const spent = stats.byCat.get(c.id) ?? 0;
-            const limit = budgets.find((b) => b.category === c.id)?.limit ?? 0;
-            const pct = limit > 0 ? Math.min(100, Math.round((spent / limit) * 100)) : 0;
-            return (
-              <div key={c.id} className="sd-card rounded-2xl px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold">{moneyCatLabel(moneyCategories, c.id, t)}</div>
-                    <div className="text-xs text-muted tabular-nums">
-                      {formatInr(spent)}
-                      {limit > 0 ? ` / ${formatInr(limit)}` : ` · ${t("money.noCap")}`}
-                    </div>
-                  </div>
-                  {editing === c.id ? (
-                    <form
-                      className="flex items-center gap-2"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        setBudget(c.id, Number(limitDraft) || 0);
-                        setEditing(null);
-                      }}
-                    >
-                      <Input
-                        className="h-10 w-24"
-                        inputMode="numeric"
-                        value={limitDraft}
-                        onChange={(e) => setLimitDraft(e.target.value)}
-                        autoFocus
-                      />
-                      <Button size="sm" type="submit">
-                        {t("money.set")}
-                      </Button>
-                    </form>
-                  ) : (
-                    <button
-                      type="button"
-                      className="h-10 px-2 text-xs font-medium text-muted"
-                      onClick={() => {
-                        setEditing(c.id);
-                        setLimitDraft(String(limit || ""));
-                      }}
-                    >
-                      {t("money.edit")}
-                    </button>
-                  )}
-                </div>
-                <div className="mt-2 h-1 overflow-hidden rounded-full bg-fg/8">
-                  <div className={cn("h-full rounded-full", pct >= 100 ? "bg-urgent" : "bg-primary")} style={{ width: `${pct}%` }} />
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        <div className="space-y-2">{parents.map((c) => renderCap(c))}</div>
       </section>
     </main>
   );

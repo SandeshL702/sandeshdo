@@ -1,18 +1,21 @@
 import { format } from "date-fns";
 import type { Completion, Task } from "@/lib/types";
 import { useT } from "@/lib/i18n";
+import { canUndoAt } from "@/lib/time";
 
 export function CompletedRow({
   item,
   task,
   onReopen,
+  now = Date.now(),
 }: {
   item: Completion;
   task?: Task;
   onReopen?: () => void;
+  now?: number;
 }) {
   const { t } = useT();
-  const canReopen = Boolean(onReopen);
+  const canReopen = Boolean(onReopen) && canUndoAt(item.completedAt, now);
   return (
     <div className="flex items-center gap-3 rounded-2xl bg-surface px-3 py-3 shadow-[var(--sd-card-shadow)]">
       <div className="min-w-0 flex-1">

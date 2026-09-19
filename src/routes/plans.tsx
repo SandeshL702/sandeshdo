@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { format } from "date-fns";
+import { format, isToday, isTomorrow, parseISO } from "date-fns";
+import { toast } from "sonner";
 import { Plus } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
 import { HeaderActions } from "@/components/header-actions";
@@ -9,16 +10,30 @@ import { Button, Input } from "@/components/ui";
 import { useApp } from "@/lib/store";
 import { useT } from "@/lib/i18n";
 import { formatInr } from "@/lib/money";
+import { atTime, dayKey, tomorrowMorning } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import type { Plan } from "@/lib/types";
 
 export const Route = createFileRoute("/plans")({ component: PlansPage });
 
-const WHEN_CHIPS: { label: string; days: number | null }[] = [
-  { label: "Soon", days: 30 },
-  { label: "This year", days: 180 },
-  { label: "Later", days: null },
-];
+type WhenMode = "today" | "tomorrow" | "date" | "later";
+
+function modeFromWhen(when: number | null | undefined): WhenMode {
+  if (!when) return "later";
+  if (isToday(when)) return "today";
+  if (isTomorrow(when)) return "tomorrow";
+  return "date";
+}
+
+function stampWhen(mode: WhenMode, dateStr: string): number | null {
+  if (mode === "later") return null;
+  if (mode === "today") return atTime(new Date(), 9, 0).getTime();
+  if (mode === "tomorrow") return tomorrowMorning();
+  if (!dateStr) return null;
+  const parsed = parseISO(dateStr);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return atTime(parsed, 9, 0).getTime();
+}
 
 export function PlansPage() {
   const { t } = useT();
@@ -31,7 +46,8 @@ export function PlansPage() {
   const [title, setTitle] = useState("");
   const [note, setNote] = useState("");
   const [cost, setCost] = useState("");
-  const [whenDays, setWhenDays] = useState<number | null>(180);
+  const [whenMode, setWhenMode] = useState<WhenMode>("later");
+  const [whenDate, setWhenDate] = useState("");
   const sorted = useMemo(
     () => [...plans].sort((a, b) => Number(a.done) - Number(b.done) || (a.when ?? 9e15) - (b.when ?? 9e15)),
     [plans],
@@ -42,7 +58,8 @@ export function PlansPage() {
     setTitle("");
     setNote("");
     setCost("");
-    setWhenDays(180);
+    setWhenMode("later");
+    setWhenDate("");
     setOpen(true);
   };
 
@@ -51,20 +68,29 @@ export function PlansPage() {
     setTitle(plan.title);
     setNote(plan.note);
     setCost(plan.cost ? String(plan.cost) : "");
-    setWhenDays(plan.when ? Math.max(1, Math.round((plan.when - Date.now()) / 86_400_000)) : null);
+    setWhenMode(modeFromWhen(plan.when));
+    setWhenDate(plan.when ? dayKey(plan.when) : "");
     setOpen(true);
   };
 
   const save = () => {
     const name = title.trim();
     if (!name) return;
-    const when = whenDays == null ? null : Date.now() + whenDays * 86_400_000;
+    const when = stampWhen(whenMode, whenDate);
     const n = Number(cost);
     const costN = Number.isFinite(n) && n > 0 ? n : null;
     if (editing) updatePlan(editing.id, { title: name, note, when, cost: costN });
     else addPlan({ title: name, note, when, cost: costN });
+    if (when) toast(t("plans.onCal"));
     setOpen(false);
   };
+
+  const chips: { id: WhenMode; label: string }[] = [
+    { id: "today", label: t("plans.today") },
+    { id: "tomorrow", label: t("plans.tomorrow") },
+    { id: "date", label: t("plans.pick") },
+    { id: "later", label: t("plans.later") },
+  ];
 
   return (
     <main className="overflow-x-hidden px-5 pt-5 pb-8">
@@ -100,7 +126,7 @@ export function PlansPage() {
               <button type="button" className="min-w-0 flex-1 text-left" onClick={() => startEdit(plan)}>
                 <div className={cn("text-sm font-semibold", plan.done && "text-muted line-through")}>{plan.title}</div>
                 <div className="mt-1 text-xs text-muted">
-                  {plan.when ? format(plan.when, "d MMM yyyy") : t("add.later")}
+                  {plan.when ? format(plan.when, "d MMM yyyy") : t("plans.later")}
                   {plan.cost ? ` · ${formatInr(plan.cost)}` : ""}
                 </div>
                 {plan.note ? <p className="mt-1 text-xs text-muted">{plan.note}</p> : null}
@@ -142,21 +168,38 @@ export function PlansPage() {
           onChange={(e) => setCost(e.target.value.replace(/[^\d]/g, ""))}
           placeholder={t("plans.cost")}
         />
-        <div className="mt-3 flex flex-wrap gap-2">
-          {WHEN_CHIPS.map((c) => (
+        <p className="mt-4 mb-2 text-[11px] font-semibold tracking-[0.14em] text-muted uppercase">{t("plans.when")}</p>
+        <div className="flex flex-wrap gap-2">
+          {chips.map((c) => (
             <button
-              key={c.label}
+              key={c.id}
               type="button"
-              onClick={() => setWhenDays(c.days)}
+              onClick={() => {
+                setWhenMode(c.id);
+                if (c.id === "today") setWhenDate(dayKey());
+                if (c.id === "tomorrow") setWhenDate(dayKey(tomorrowMorning()));
+              }}
               className={cn(
                 "h-10 rounded-full px-3 text-xs font-semibold",
-                whenDays === c.days ? "bg-primary text-primary-fg" : "bg-bg text-muted shadow-[var(--sd-card-shadow)]",
+                whenMode === c.id ? "bg-primary text-primary-fg" : "bg-bg text-muted shadow-[var(--sd-card-shadow)]",
               )}
             >
               {c.label}
             </button>
           ))}
         </div>
+        {whenMode === "date" || whenMode === "today" || whenMode === "tomorrow" ? (
+          <Input
+            className="mt-3"
+            type="date"
+            value={whenDate}
+            onChange={(e) => {
+              setWhenDate(e.target.value);
+              setWhenMode(e.target.value ? "date" : "later");
+            }}
+          />
+        ) : null}
+        {whenMode !== "later" ? <p className="mt-2 text-xs text-muted">{t("plans.onCal")}</p> : null}
       </Sheet>
     </main>
   );

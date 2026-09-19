@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { Button } from "@/components/ui";
 import { useApp } from "@/lib/store";
 import { useT } from "@/lib/i18n";
+import { canUndoAt } from "@/lib/time";
 
 export function FinishScreen() {
   const { t } = useT();
@@ -69,7 +70,7 @@ export function FinishScreen() {
         >
           {t("finish.continue")}
         </Button>
-        {!event.recurring && (
+        {!event.recurring && canUndoAt(event.completedAt) && (
           <button
             type="button"
             className="mt-1 inline-flex h-11 items-center justify-center gap-2 text-sm font-medium text-bg/70"

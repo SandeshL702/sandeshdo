@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import type { Task } from "@/lib/types";
-import { formatDue } from "@/lib/time";
+import { formatDue, canUndoAt } from "@/lib/time";
 import { liveStatus } from "@/lib/engine";
 import { useApp } from "@/lib/store";
 import { useT } from "@/lib/i18n";
@@ -115,6 +115,7 @@ export function TaskRow({
             {timeLabel}
           </div>
         )}
+        {(!done || canUndoAt(task.completedAt, now)) && (
         <button
           type="button"
           className="h-10 shrink-0 whitespace-nowrap px-1 text-xs font-medium text-muted"
@@ -126,6 +127,7 @@ export function TaskRow({
         >
           {done ? t("finish.undo") : t("do.markDone")}
         </button>
+        )}
       </div>
     </div>
   );

@@ -10,8 +10,9 @@ import { ensureNotificationPermission, playGentleTone, readNativeHealth, sendTes
 import { selectStats, useApp } from "@/lib/store";
 import { useT } from "@/lib/i18n";
 import { REMINDER_OFFSET_PRESETS, type Locale, type MoneyCatKind, type NotifyTone, type ReminderInterval, type ThemeMode } from "@/lib/types";
-import { moneyCatLabel } from "@/lib/money";
+import { formatInr, moneyCatLabel } from "@/lib/money";
 import { taskCatLabel } from "@/lib/types";
+import { canUndoAt } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { BrandMark } from "@/components/brand-mark";
 import { HeaderActions } from "@/components/header-actions";
@@ -46,6 +47,12 @@ export function SettingsPage() {
   const restoreTx = useApp((s) => s.restoreTx);
   const restoreNote = useApp((s) => s.restoreNote);
   const restorePlan = useApp((s) => s.restorePlan);
+  const deleteCompletion = useApp((s) => s.deleteCompletion);
+  const forgetTx = useApp((s) => s.forgetTx);
+  const deleteTx = useApp((s) => s.deleteTx);
+  const reopenTask = useApp((s) => s.reopenTask);
+  const completions = useApp((s) => s.completions);
+  const transactions = useApp((s) => s.transactions);
   const trashTasks = useApp((s) => s.trashTasks);
   const trashTx = useApp((s) => s.trashTx);
   const trashNotes = useApp((s) => s.trashNotes);
@@ -60,6 +67,14 @@ export function SettingsPage() {
   const [countdown, setCountdown] = useState<number | null>(null);
   const [geminiCheck, setGeminiCheck] = useState("");
   const [geminiBusy, setGeminiBusy] = useState(false);
+  const [subParent, setSubParent] = useState<string | null>(null);
+  const [subName, setSubName] = useState("");
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 10_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const refresh = () => setHealth(readNativeHealth());
@@ -553,67 +568,112 @@ export function SettingsPage() {
 
       <Section title={t("settings.paisa")}>
         <p className="mb-3 text-sm text-muted">{t("settings.paisaHint")}</p>
-        {(["in", "out"] as const).map((group) => (
-          <div key={group} className="mb-4">
-            <p className="mb-2 text-[11px] font-semibold tracking-[0.14em] text-muted uppercase">
-              {group === "in" ? t("settings.paisaInList") : t("settings.paisaOutList")}
-            </p>
-            <div className="space-y-1.5">
-              {moneyCategories
-                .filter((c) => c.kind === group || c.kind === "both")
-                .map((c) => (
-                  <div key={`${group}-${c.id}`} className="flex items-center justify-between gap-2 rounded-xl bg-bg px-3 py-2">
-                    {editPaisaId === `${group}-${c.id}` ? (
-                      <form
-                        className="flex min-w-0 flex-1 gap-2"
-                        onSubmit={(e) => {
-                          e.preventDefault();
-                          renameMoneyCategory(c.id, editPaisaName);
-                          setEditPaisaId(null);
-                        }}
-                      >
-                        <Input
-                          value={editPaisaName}
-                          onChange={(e) => setEditPaisaName(e.target.value)}
-                          className="h-10"
-                          autoFocus
-                        />
-                        <Button type="submit" size="sm" variant="secondary">
-                          {t("money.set")}
-                        </Button>
-                      </form>
-                    ) : (
-                      <button
-                        type="button"
-                        className="min-w-0 flex-1 truncate text-left text-sm font-medium"
-                        onClick={() => {
-                          setEditPaisaId(`${group}-${c.id}`);
-                          setEditPaisaName(c.name);
-                        }}
-                      >
-                        {moneyCatLabel(moneyCategories, c.id, t)}
-                      </button>
-                    )}
+        {(["in", "out"] as const).map((group) => {
+          const roots = moneyCategories.filter((c) => !c.parentId && (c.kind === group || c.kind === "both"));
+          const renderRow = (c: (typeof moneyCategories)[number], nested: boolean) => (
+            <div key={`${group}-${c.id}`}>
+              <div className={cn("flex items-center justify-between gap-2 rounded-xl bg-bg px-3 py-2", nested && "ml-4")}>
+                {editPaisaId === `${group}-${c.id}` ? (
+                  <form
+                    className="flex min-w-0 flex-1 gap-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      renameMoneyCategory(c.id, editPaisaName);
+                      setEditPaisaId(null);
+                    }}
+                  >
+                    <Input
+                      value={editPaisaName}
+                      onChange={(e) => setEditPaisaName(e.target.value)}
+                      className="h-10"
+                      autoFocus
+                    />
+                    <Button type="submit" size="sm" variant="secondary">
+                      {t("money.set")}
+                    </Button>
+                  </form>
+                ) : (
+                  <button
+                    type="button"
+                    className="min-w-0 flex-1 truncate text-left text-sm font-medium"
+                    onClick={() => {
+                      setEditPaisaId(`${group}-${c.id}`);
+                      setEditPaisaName(c.name);
+                    }}
+                  >
+                    {moneyCatLabel(moneyCategories, c.id, t)}
+                  </button>
+                )}
+                {!nested && (
+                  <button
+                    type="button"
+                    className="h-10 shrink-0 px-1 text-xs text-muted"
+                    onClick={() => setMoneyCatKind(c.id, group === "in" ? "out" : "in")}
+                  >
+                    {group === "in" ? t("settings.paisaOut") : t("settings.paisaIn")}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="h-10 shrink-0 px-1 text-xs text-muted"
+                  onClick={() => deleteMoneyCategory(c.id)}
+                  disabled={moneyCategories.length <= 1}
+                >
+                  {t("settings.remove")}
+                </button>
+              </div>
+              {!nested &&
+                moneyCategories
+                  .filter((kid) => kid.parentId === c.id)
+                  .map((kid) => renderRow(kid, true))}
+              {!nested && group === "out" && (
+                <div className="mt-1 ml-4">
+                  {subParent === c.id ? (
+                    <form
+                      className="flex gap-2"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        addMoneyCategory(subName, c.kind === "in" ? "in" : "out", c.id);
+                        setSubName("");
+                        setSubParent(null);
+                      }}
+                    >
+                      <Input
+                        value={subName}
+                        onChange={(e) => setSubName(e.target.value)}
+                        placeholder={t("settings.addSub")}
+                        className="h-10"
+                        autoFocus
+                      />
+                      <Button type="submit" size="sm" variant="secondary" disabled={!subName.trim()}>
+                        {t("settings.add")}
+                      </Button>
+                    </form>
+                  ) : (
                     <button
                       type="button"
-                      className="h-10 shrink-0 px-1 text-xs text-muted"
-                      onClick={() => setMoneyCatKind(c.id, group === "in" ? "out" : "in")}
+                      className="h-8 px-1 text-xs font-medium text-muted"
+                      onClick={() => {
+                        setSubParent(c.id);
+                        setSubName("");
+                      }}
                     >
-                      {group === "in" ? t("settings.paisaOut") : t("settings.paisaIn")}
+                      {t("settings.addSub")}
                     </button>
-                    <button
-                      type="button"
-                      className="h-10 shrink-0 px-1 text-xs text-muted"
-                      onClick={() => deleteMoneyCategory(c.id)}
-                      disabled={moneyCategories.length <= 1}
-                    >
-                      {t("settings.remove")}
-                    </button>
-                  </div>
-                ))}
+                  )}
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+          return (
+            <div key={group} className="mb-4">
+              <p className="mb-2 text-[11px] font-semibold tracking-[0.14em] text-muted uppercase">
+                {group === "in" ? t("settings.paisaInList") : t("settings.paisaOutList")}
+              </p>
+              <div className="space-y-1.5">{roots.map((c) => renderRow(c, false))}</div>
+            </div>
+          );
+        })}
         <form
           className="mt-3 space-y-2"
           onSubmit={(e) => {
@@ -719,6 +779,96 @@ export function SettingsPage() {
         <Button className="mt-2 w-full" variant="ghost" onClick={resetDemo}>
           {t("settings.demo")}
         </Button>
+      </Section>
+
+      <Section title={t("settings.records")}>
+        <p className="mb-3 text-sm text-muted">{t("settings.recordsHint")}</p>
+        <div className="space-y-2">
+          {completions
+            .filter((c) => !c.undoneAt)
+            .sort((a, b) => b.completedAt - a.completedAt)
+            .slice(0, 80)
+            .map((row) => {
+              const open = canUndoAt(row.completedAt, now);
+              return (
+                <div key={row.id} className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate text-sm">
+                    {row.title}
+                    <span className="mt-0.5 block text-[11px] text-muted">
+                      {format(row.completedAt, "d MMM, h:mm a")}
+                    </span>
+                  </span>
+                  {open ? (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        reopenTask(row.taskId, row.id);
+                        toast(t("finish.undo"));
+                      }}
+                    >
+                      {t("finish.undo")}
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        deleteCompletion(row.id);
+                        toast(t("settings.deleteForever"));
+                      }}
+                    >
+                      {t("settings.deleteForever")}
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          {transactions
+            .slice()
+            .sort((a, b) => b.at - a.at)
+            .slice(0, 80)
+            .map((row) => {
+              const open = canUndoAt(row.at, now);
+              return (
+                <div key={row.id} className="flex items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate text-sm">
+                    {row.type === "income" ? "+" : "−"}
+                    {formatInr(row.amount)} · {row.note}
+                    <span className="mt-0.5 block text-[11px] text-muted">
+                      {moneyCatLabel(moneyCategories, row.category, t)} · {format(row.at, "d MMM, h:mm a")}
+                    </span>
+                  </span>
+                  {open ? (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        deleteTx(row.id);
+                        toast(t("money.undo"));
+                      }}
+                    >
+                      {t("money.undo")}
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        forgetTx(row.id);
+                        toast(t("settings.deleteForever"));
+                      }}
+                    >
+                      {t("settings.deleteForever")}
+                    </Button>
+                  )}
+                </div>
+              );
+            })}
+          {completions.every((c) => c.undoneAt) && transactions.length === 0 ? (
+            <p className="text-sm text-muted">{t("today.recapEmpty")}</p>
+          ) : null}
+        </div>
       </Section>
 
       {(trashTasks.length > 0 || trashTx.length > 0 || trashNotes.length > 0 || trashPlans.length > 0) && (

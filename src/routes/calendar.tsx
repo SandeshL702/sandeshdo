@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import {
   addMonths,
   eachDayOfInterval,
@@ -39,9 +39,11 @@ export function CalendarPage() {
   const { t, locale } = useT();
   const week = tList(locale, "cal.week");
   const search = Route.useSearch();
+  const navigate = useNavigate();
   const tasks = useApp((s) => s.tasks);
   const completions = useApp((s) => s.completions);
   const transactions = useApp((s) => s.transactions);
+  const plans = useApp((s) => s.plans);
   const [cursor, setCursor] = useState(() => startOfMonth(new Date()));
   const [selected, setSelected] = useState(() => new Date());
   const now = Date.now();
@@ -61,13 +63,17 @@ export function CalendarPage() {
   }, [cursor]);
 
   const selectedKey = dayKey(selected);
-  const load = useMemo(() => selectDayLoad(tasks, completions), [tasks, completions]);
+  const load = useMemo(
+    () => selectDayLoad(tasks, completions, plans, transactions),
+    [tasks, completions, plans, transactions],
+  );
   const remainingCount = load.remaining.get(selectedKey) ?? 0;
   const finishedCount = load.finished.get(selectedKey) ?? 0;
+  const plannedCount = load.planned.get(selectedKey) ?? 0;
   const money = useMemo(() => dayMoney(transactions, selectedKey), [transactions, selectedKey]);
   const log = useMemo(
-    () => buildDayLog(tasks, completions, transactions, selectedKey, now).sort((a, b) => a.at - b.at),
-    [tasks, completions, transactions, selectedKey, now],
+    () => buildDayLog(tasks, completions, transactions, selectedKey, now, plans).sort((a, b) => a.at - b.at),
+    [tasks, completions, transactions, plans, selectedKey, now],
   );
   const openToday = tasks.filter((row) => row.status !== "completed" && row.dueAt && dayKey(row.dueAt) === selectedKey);
 
@@ -130,6 +136,8 @@ export function CalendarPage() {
             const inMonth = isSameMonth(d, cursor);
             const remain = load.remaining.get(key) ?? 0;
             const done = load.finished.get(key) ?? 0;
+            const planN = load.planned.get(key) ?? 0;
+            const moneyN = load.money.get(key) ?? 0;
             return (
               <button
                 key={key}
@@ -154,7 +162,11 @@ export function CalendarPage() {
                 </span>
                 <span className="flex h-1.5 items-center justify-center gap-0.5">
                   {remain > 0 && <span className="size-1.5 rounded-full bg-primary" />}
-                  {done > 0 && remain === 0 && <span className="size-1.5 rounded-full bg-fg/35" />}
+                  {planN > 0 && <span className="size-1.5 rounded-full bg-high" />}
+                  {moneyN > 0 && remain === 0 && planN === 0 && <span className="size-1.5 rounded-full bg-snooze" />}
+                  {done > 0 && remain === 0 && planN === 0 && moneyN === 0 && (
+                    <span className="size-1.5 rounded-full bg-fg/35" />
+                  )}
                 </span>
               </button>
             );
@@ -167,6 +179,7 @@ export function CalendarPage() {
           <h2 className="font-display truncate text-xl font-medium tracking-tight">{format(selected, "EEEE d MMM")}</h2>
           <p className="mt-1 text-xs text-muted tabular-nums">
             {t("cal.leftChip", { n: remainingCount })} · {t("cal.doneChip", { n: finishedCount })}
+            {plannedCount > 0 ? ` · ${t("cal.plansChip", { n: plannedCount })}` : ""}
             {money.expense + money.income > 0 ? ` · ${formatInr(money.income - money.expense)}` : ""}
           </p>
         </div>
@@ -196,24 +209,43 @@ export function CalendarPage() {
               .map((entry) => (
                 <div key={`${entry.kind}-${entry.id}`} className="grid grid-cols-[4.25rem_1fr] items-center gap-2 py-1">
                   <span className="text-xs text-muted tabular-nums" suppressHydrationWarning>
-                    {format(entry.at, "h:mm a")}
+                    {entry.kind === "plan" ? format(entry.at, "d MMM") : format(entry.at, "h:mm a")}
                   </span>
-                  <div className="flex min-w-0 items-center justify-between gap-2 rounded-2xl bg-surface px-3 py-2.5 shadow-[var(--sd-card-shadow)]">
-                    <span className={cn("truncate text-sm", entry.kind === "done" && "text-muted")}>{entry.title}</span>
+                  <button
+                    type="button"
+                    className="flex min-w-0 items-center justify-between gap-2 rounded-2xl bg-surface px-3 py-2.5 text-left shadow-[var(--sd-card-shadow)]"
+                    onClick={() => {
+                      if (entry.kind === "plan") void navigate({ to: "/plans" });
+                    }}
+                  >
+                    <span
+                      className={cn(
+                        "truncate text-sm",
+                        entry.kind === "done" && "text-muted",
+                        entry.kind === "plan" && "done" in entry && entry.done && "text-muted line-through",
+                      )}
+                    >
+                      {entry.title}
+                    </span>
                     <span
                       className={cn(
                         "shrink-0 text-xs font-semibold tabular-nums",
                         entry.kind === "in" && "text-primary",
                         entry.kind === "done" && "text-done",
+                        entry.kind === "plan" && "text-high",
                       )}
                     >
                       {entry.kind === "done"
                         ? t("cal.finished")
-                        : "amount" in entry
-                          ? `${entry.kind === "in" ? "+" : "−"}${formatInr(entry.amount)}`
-                          : ""}
+                        : entry.kind === "plan"
+                          ? "cost" in entry && entry.cost
+                            ? formatInr(entry.cost)
+                            : t("cal.plan")
+                          : "amount" in entry
+                            ? `${entry.kind === "in" ? "+" : "−"}${formatInr(entry.amount)}`
+                            : ""}
                     </span>
-                  </div>
+                  </button>
                 </div>
               ))}
           </div>
