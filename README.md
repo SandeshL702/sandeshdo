@@ -4,17 +4,14 @@
 </p>
 
 <p align="center">
-  <img src="docs/banner.jpg" alt="SandeshDo — Remember it. Do it. Finish it." width="920" />
+  <img src="docs/banner.jpg" alt="SandeshDo — Hinglish todo and Android reminder app" width="920" />
 </p>
 
-<h1 align="center">SandeshDo</h1>
+# SandeshDo — Hinglish Todo & Android Reminder App
 
-<p align="center"><strong>Remember it. Do it. Finish it.</strong></p>
+**Remember it. Do it. Finish it.**
 
-<p align="center">
-  Private Android app for people who think in Hinglish.<br/>
-  Say the work once. It becomes a task with a real reminder — even if the app is closed.
-</p>
+Private offline task manager for India — people who think in Hinglish. Say the work once. It becomes a task with a real reminder, even if the app is closed. No account. No cloud required.
 
 <p align="center">
   <a href="https://github.com/SandeshL702/sandeshdo/releases"><img alt="Release" src="https://img.shields.io/github/v/release/SandeshL702/sandeshdo?style=flat-square&color=0f766e" /></a>
@@ -24,9 +21,9 @@
 </p>
 
 <p align="center">
-  <img src="docs/today.png" width="250" alt="Today" />
-  <img src="docs/calendar.png" width="250" alt="Calendar" />
-  <img src="docs/sandy.png" width="250" alt="Sandy" />
+  <img src="docs/today.png" width="250" alt="SandeshDo Today — Hinglish todo list" />
+  <img src="docs/calendar.png" width="250" alt="SandeshDo Calendar — offline task manager" />
+  <img src="docs/sandy.png" width="250" alt="Sandy — Hinglish Android reminder assistant" />
 </p>
 
 ## Say this. It happens.
